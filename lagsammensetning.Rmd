@@ -452,7 +452,7 @@ f.obj <- temp$verdi_teamjustert
 
 x <- lp ("max", f.obj, f.con, f.dir, f.rhs, all.bin=TRUE)
 x
-kable(temp[which(x$solution==1),c(3,11,8,9,26,10,12,37)])
+kable(temp[which(x$solution==1),c(3,11,13,8,9,26,10,12,37)])
 temp$solution = x$solution
 ```
 

@@ -197,18 +197,18 @@ Hvordan er poengene fordelt? Ganske jevnt og nesten klokkeforma, faktisk, særli
     ## 
     ## Residuals:
     ##     Min      1Q  Median      3Q     Max 
-    ## -10.291  -2.288  -1.045   0.599  33.782 
+    ## -10.290  -2.288  -1.045   0.598  33.782 
     ## 
     ## Coefficients:
     ##             Estimate Std. Error t value Pr(>|t|)    
-    ## (Intercept)  -8.8448     1.0643   -8.31 1.49e-15 ***
-    ## now_cost      0.2286     0.0188   12.16  < 2e-16 ***
+    ## (Intercept) -8.84242    1.06395  -8.311 1.49e-15 ***
+    ## now_cost     0.22862    0.01879  12.164  < 2e-16 ***
     ## ---
     ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
     ## 
-    ## Residual standard error: 5.115 on 401 degrees of freedom
-    ## Multiple R-squared:  0.2695, Adjusted R-squared:  0.2676 
-    ## F-statistic: 147.9 on 1 and 401 DF,  p-value: < 2.2e-16
+    ## Residual standard error: 5.114 on 401 degrees of freedom
+    ## Multiple R-squared:  0.2695, Adjusted R-squared:  0.2677 
+    ## F-statistic:   148 on 1 and 401 DF,  p-value: < 2.2e-16
 
 Når det gjelder samvariasjon mellom popularitet og pris, ser vi at denne stort sett følger en lineær trend - jo høyere pris, jo høyere popularitet. Det er imidlertid flere spillere som ligger over (og under), noe som kan bety at de er bedre enn prisen tilsier, eller at fantasy-deltakerne overvurderer dem. Sagt på en anna måte: innafor hver priskategori er det stor variasjon i hvor populære de enkelte spillerne er, noe som ikke forklares av pris alene.
 
@@ -233,21 +233,21 @@ Når det gjelder samvariasjon mellom popularitet og pris, ser vi at denne stort 
     ## lm(formula = Poeng ~ selected_by_percent + now_cost, data = temp)
     ## 
     ## Residuals:
-    ##     Min      1Q  Median      3Q     Max 
-    ## -70.674 -18.373   3.746  20.929  49.140 
+    ##    Min     1Q Median     3Q    Max 
+    ## -70.53 -18.37   3.76  20.93  49.13 
     ## 
     ## Coefficients:
     ##                     Estimate Std. Error t value Pr(>|t|)    
-    ## (Intercept)         59.72322   10.16121   5.878 3.13e-08 ***
-    ## selected_by_percent  1.46166    0.36813   3.971 0.000116 ***
-    ## now_cost             0.08961    0.16908   0.530 0.597005    
+    ## (Intercept)         59.74005   10.15986   5.880  3.1e-08 ***
+    ## selected_by_percent  1.46403    0.36821   3.976 0.000114 ***
+    ## now_cost             0.08915    0.16906   0.527 0.598821    
     ## ---
     ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
     ## 
     ## Residual standard error: 26.14 on 134 degrees of freedom
     ##   (266 observations deleted due to missingness)
-    ## Multiple R-squared:  0.1512, Adjusted R-squared:  0.1385 
-    ## F-statistic: 11.94 on 2 and 134 DF,  p-value: 1.698e-05
+    ## Multiple R-squared:  0.1515, Adjusted R-squared:  0.1388 
+    ## F-statistic: 11.96 on 2 and 134 DF,  p-value: 1.665e-05
 
 Det er også (i hovedsak) en positiv sammenheng mellom popularitet og beregna poeng for 2016, og mellom nåkostnad og beregna poeng: jo høyere pris og jo høyere popularitet, jo flere poeng ville spillerne ha sanka i 2016. (For de 137 spillerne vi har data på). Lineær regresjon viser at sammenhengen er sterkest med popularitetsindikatoren, og at ingen av variablene forklarer mye av variasjonen i poengsummen. Sagt på en anna måte: det er ikke sikkert poengsummen for 2016 har vært viktig for popularitet og prissetting for årets sesong.
 
@@ -309,17 +309,17 @@ Videre kan det også være verdt å se på om spillere på lag som vurderes som 
 
 | team\_navn |       mean|       sum|
 |:-----------|----------:|---------:|
-| RBK        |  0.2787784|  6.969459|
+| RBK        |  0.2788592|  6.971480|
 | ODD        |  0.1900910|  4.942365|
 | BRA        |  0.1775711|  4.084136|
-| MOL        |  0.1747739|  4.718895|
-| VIF        |  0.1490548|  4.024480|
-| SIF        |  0.1472625|  4.123351|
+| MOL        |  0.1747365|  4.717885|
+| VIF        |  0.1490922|  4.025490|
+| SIF        |  0.1472265|  4.122341|
 | LSK        |  0.1097600|  2.524480|
 | VIK        |  0.1088610|  2.503803|
 | FKH        |  0.1043280|  2.608200|
 | SO8        |  0.1010362|  2.525906|
-| AAFK       |  0.0908473|  2.271182|
+| AAFK       |  0.0908877|  2.272193|
 | TIL        |  0.0879357|  2.110457|
 | STB        |  0.0756730|  1.967499|
 | KBK        |  0.0747387|  2.017944|
@@ -344,29 +344,29 @@ x <- lp ("max", f.obj, f.con, f.dir, f.rhs, all.bin=TRUE)
 x
 ```
 
-    ## Success: the objective function is 7.175065
+    ## Success: the objective function is 7.174593
 
 ``` r
-kable(temp[which(x$solution==1),c(3,11,8,9,26,10,12,37)])
+kable(temp[which(x$solution==1),c(3,11,13,8,9,26,10,12,37)])
 ```
 
-|   id| navn                     |  now\_cost|  selected\_by\_percent|      Poeng| status | posisjon |  verdi\_teamjustert|
-|----:|:-------------------------|----------:|----------------------:|----------:|:-------|:---------|-------------------:|
-|   26| Piotr Leciejewski        |         55|                   22.1|  105.75000| a      | Keeper   |           0.4455543|
-|   29| Amin Nouri               |         55|                    7.2|  117.00000| a      | Forsvar  |           0.3708762|
-|   64| Frederik Gytkjaer        |         75|                   11.0|  103.16667| a      | Angrep   |           0.4024991|
-|  120| Ruben Gabrielsen         |         60|                   15.4|  105.75000| a      | Forsvar  |           0.4040018|
-|  129| Babacar Sarr             |         50|                    4.9|   64.00000| a      | Midtbane |           0.2470852|
-|  143| Etzaz Hussain            |         60|                   23.0|  105.75000| a      | Midtbane |           0.4500624|
-|  144| Sondre Rossbach          |         55|                   25.8|  103.16667| a      | Keeper   |           0.4713616|
-|  146| Espen Ruud               |         65|                   39.8|  151.00000| a      | Forsvar  |           0.6579394|
-|  154| Ardian Gashi             |         45|                    8.9|   71.47059| a      | Midtbane |           0.2896209|
-|  181| Mike Jensen              |        105|                   26.1|  118.00000| a      | Midtbane |           0.7417602|
-|  184| Fredrik Midtsjo          |         85|                   25.1|  107.00000| a      | Midtbane |           0.6498336|
-|  194| Nicklas Bendtner         |        125|                   49.5|  103.16667| a      | Angrep   |           0.9335648|
-|  258| Fredrik Flo              |         45|                    5.2|   85.78947| a      | Angrep   |           0.2170415|
-|  298| Jonathan Parr            |         60|                   20.1|  104.00000| a      | Forsvar  |           0.4117425|
-|  299| Lars-Christopher Vilsvik |         60|                   26.9|  125.00000| a      | Forsvar  |           0.4821212|
+|   id| navn                     | team\_navn |  now\_cost|  selected\_by\_percent|      Poeng| status | posisjon |  verdi\_teamjustert|
+|----:|:-------------------------|:-----------|----------:|----------------------:|----------:|:-------|:---------|-------------------:|
+|   26| Piotr Leciejewski        | BRA        |         55|                   22.1|  105.75000| a      | Keeper   |           0.4455205|
+|   29| Amin Nouri               | BRA        |         55|                    7.2|  117.00000| a      | Forsvar  |           0.3708425|
+|   64| Frederik Gytkjaer        | FKH        |         75|                   11.0|  103.16667| a      | Angrep   |           0.4024772|
+|  120| Ruben Gabrielsen         | MOL        |         60|                   15.4|  105.75000| a      | Forsvar  |           0.4039475|
+|  129| Babacar Sarr             | MOL        |         50|                    4.9|   64.00000| a      | Midtbane |           0.2470309|
+|  143| Etzaz Hussain            | MOL        |         60|                   23.0|  105.75000| a      | Midtbane |           0.4500081|
+|  144| Sondre Rossbach          | ODD        |         55|                   25.8|  103.16667| a      | Keeper   |           0.4713259|
+|  146| Espen Ruud               | ODD        |         65|                   39.8|  151.00000| a      | Forsvar  |           0.6579037|
+|  154| Ardian Gashi             | ODD        |         45|                    8.9|   71.47059| a      | Midtbane |           0.2895852|
+|  181| Mike Jensen              | RBK        |        105|                   26.1|  118.00000| a      | Midtbane |           0.7417602|
+|  184| Fredrik Midtsjo          | RBK        |         85|                   25.1|  107.00000| a      | Midtbane |           0.6498336|
+|  194| Nicklas Bendtner         | RBK        |        125|                   49.5|  103.16667| a      | Angrep   |           0.9335648|
+|  258| Fredrik Flo              | SOG        |         45|                    5.2|   85.78947| a      | Angrep   |           0.2170253|
+|  298| Jonathan Parr            | SIF        |         60|                   20.1|  104.00000| a      | Forsvar  |           0.4116942|
+|  299| Lars-Christopher Vilsvik | SIF        |         60|                   26.9|  125.00000| a      | Forsvar  |           0.4820729|
 
 ``` r
 temp$solution = x$solution
