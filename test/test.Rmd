@@ -1,0 +1,217 @@
+---
+title: "Eliteserien Fantasy Football med R"
+output:
+  html_document: default
+  html_notebook: default
+---
+
+```{r include=FALSE}
+#laster inn biblioteker
+library(httr)
+library(jsonlite)
+library(dplyr)
+library(readr)
+library(lpSolve)
+library(ggplot2)
+```
+
+Hva gjør du når kjentfolk inviterer deg til Eliteserien Fantasy Football, når Solskjær var stor i Norge sist du interesserte deg for norsk ligafotball? Prøver å analysere deg fram til noe fornuftig, selvsagt. Heldigvis har Premier League Fantasy Football vært ei greie ganske lenge, slik at det ligger en del [pekere og andres forsøk](https://llimllib.github.io/fantasypl/) rundt.
+
+Første utfordring er å sette sammen et fornuftig lag. En må velge 15 spillere (fordelt på 2 keepere, 5 forsvarsspillere, 5 midtbanespillere og tre angrepsspillere), verdien kan ikke overstige 100 fantasimillioner (fantasillioner?), og en kan maks velge tre spillere fra et enkelt lag. [I følge reglene](https://fantasy.vg.no/a/help). 
+
+Dette høres ut som et opimeringsproblem - hvis en kan finne datamateriale over alle spillere, deres fantasiverdi, posisjon, lagtilhørighet og en eller annen proxy for dugelighet. Datagrunnlaget VG bruker ser ut til å ligge tilgjengelig i json-format i et API (?), og kan hentes med GET. 
+
+Vil VG protestere på slik bruk av dataene? Dette er jo ikke dokumentert noe sted, så vidt jeg ser. Terms of Service omtaler at spillet ikke kan kopieres, men det står ingenting om datagrunnlaget. Siden hver skifting av hvilke spillere som vises utløser et nytt slikt kall, bør ikke et par kall fra denne algoritmen være feil. 
+
+```{r}
+#dette ser ut til å hente ut informasjon om  spillere
+spillerdata = GET("https://fantasy.vg.no/drf/elements/")
+http_status(spillerdata)
+
+#henter ut innholdet som ei liste
+parsed = content(spillerdata,"parsed")
+#konverterer innholdet fra json til data-frame
+df = fromJSON(content(spillerdata,"text"))
+#df = fromJSON(parsed)
+
+#lagrer en lokal kopi av dataene
+#bruker Sys.Date selv om jeg er usikker på om dette er data som oppdateres live.
+write.csv2(df,paste0("spillerdata_",Sys.Date(),".csv"),row.names=F)
+```
+Kall mot hver enkelt spillers kampoppsett kan derimot være litt mer krevende, så det lar jeg ligge inntil videre.
+
+```{r, include=F}
+#dette ser ut til å hente ut et enkelt elements kampoppsett
+#spillerdata_kamp = GET("https://fantasy.vg.no/drf/element-summary/1")
+#http_status(spillerdata_kamp)
+
+#prøver å hente ut fixtures, men denne er ikke like velforma som spillerdataene over. lar det ligge så lenge
+#spillerdata_kamp_parsed = content(spillerdata_kamp,"parsed")
+#df_test = fromJSON(content(spillerdata_kamp[5],"text"))
+#spillerdata_kamp_parsed[5]
+#str(spillerdata_kamp,max.level = 1)
+
+```
+
+Dette gir et datasett på 400 observasjoner og 50 variabler. I følge nettsida er det 399 spillere å velge mellom, så det høres nesten riktig ut. 
+
+```{r}
+#de første observasjonene
+head(df)
+#en variabelliste
+colnames(df)
+```
+
+
+```{r include=F}
+
+#lag har både team (1-16) og team_code (div nr.)
+#antall teamkoder
+nlevels(as.factor(df$team_code))
+nlevels(as.factor(df$team))
+#teamkodene
+levels(as.factor(df$team_code))
+levels(as.factor(df$team))
+
+#kan dette være posisjon?
+levels(as.factor(df$element_type))
+temp = select(df,id,web_name,element_type)
+# 1 = keepere, 2 = forsvarsspillere, 3 = midtbanespillere, 4 = angrep
+
+#statuskoden har nivåene a og u - og u ser ut til å være uaktuelle spillere
+levels(as.factor(df$status))
+
+#ser ut til å være en varian av id?
+nlevels(as.factor(df$code))
+
+#usikker på disse
+levels(as.factor(df$form))
+levels(as.factor(df$ep_this))
+levels(as.factor(df$ep_next))
+levels(as.factor(df$special))
+```
+
+
+Blant variablene ser følgende ut til å være relevante
+* id-variabel fra 1 til 400 (men også en code med 400 verdier)
+* en team_code og en team, som med 16 nivåer bør tilsvare lagene.
+* now_cost som bør være nåkostnad
+* element_type som ser ut til å være posisjon
+* status som koder hvorvidt en spiller er relevant eller ikke
+* selected_by_percent
+
+```{r}
+#velger ut variabler relevant for å velge et lag her. filtrerer vekk status==a
+temp = select(filter(df,status=="a"),id,web_name,team,element_type,now_cost, selected_by_percent)
+
+#konverterer tall
+temp$selected_by_percent = parse_number(temp$selected_by_percent)
+
+```
+
+Anna nyttig for framtidige analyser inkluderer ulike variabler for endring av verdi, pris, poeng, poeng per kamp. Flesteparten av disse er enda ikke i bruk.
+
+## Hva er det beste laget?
+Spillet går ut på å maksimere antallet poeng. Spillere mottar poeng utifra spilletid, mål scort, målgivende pasning, og for å holde nullen. Forsvarsspillere får flere poeng for å holde nullen og score mål. Kort, selvmål, straffemiss og mange baklengsmål gir minuspoeng. Se poengsystemet på [hjelpesida](https://fantasy.vg.no/a/help) for mer info. 
+
+Det kommer altså ikke bare an på enkeltspilleres ferdigheter, men hele laget. Det vil vel også kunne være litt strategiske valg involvert i hvilke deler av laget en prioriterer høyest - er det viktigere å ha en solid keeper og et solid forsvar, eller gode angrepsspillere? 
+
+Siden jeg ikke aner, og ikke helt orker å lese [slik spiller du-artikkelen](http://www.eliteserien.no/fantasy/slik-spiller-du-fantasy), tenker jeg at i første omgang må enten prisen være en proxy for dyktighet (noe VG selv sier), eller så må hvor mange som har valgt en spiller være en proxy for dyktighet. 
+
+Vil maksimering av disse to egentlig gi så forskjellige svar? Ja, antakeligvis - og det ligger uansett inne en begrensning i budsjettet på 100 millioner. 
+
+##EDA
+
+```{r}
+qplot(now_cost,data=temp,binwidth=5,facets=element_type~.)
+qplot(selected_by_percent,data=temp,facets=element_type~.)
+qplot(now_cost,selected_by_percent,data=temp)
+qplot(now_cost,selected_by_percent,data=temp,facets=~element_type)
+```
+
+Det tydeligste mønsteret herifra er at spennet i priser øker med offensiviteten (hvis det er et ord) til spillerne - spisser har større variasjon og koster mer enn keepere.
+
+```{r, include=FALSE}
+#Setter først felles constraints mm
+# CONSTRAINTS:
+num_goalkeepers <- 2
+num_defenders <- 5
+num_midfielders <- 5
+num_strikers <- 3
+max_team_cost <- 1000
+# set "max_player_from_a_team <- 15" to ignore this constraint
+max_player_from_a_team <- 3 		
+
+# Create constraint vectors
+goalkeepers <- temp$element_type==1
+goalkeepers[goalkeepers==T] <- 1
+goalkeepers[goalkeepers==F] <- 0
+
+defenders <- temp$element_type==2
+defenders[defenders==T] <- 1
+defenders[defenders==F] <- 0
+
+midfielders <- temp$element_type==3
+midfielders[midfielders==T] <- 1
+midfielders[midfielders==F] <- 0
+
+strikers <- temp$element_type==4
+strikers[strikers==T] <- 1
+strikers[strikers==F] <- 0
+
+# constraint for max # players from a team
+clubs <- sort(unique(temp$team))
+
+team_constraint_vector <- c()
+team_constraint_dir <- c()
+team_constraint_rhs <- c()
+
+for (i in 1:length(clubs)){
+        temp_2 <- temp$team==as.character(clubs[i])
+        temp_2[temp_2==T] <- 1
+        temp_2[temp_2==F] <- 0
+        
+        team_constraint_vector <- c(team_constraint_vector, temp_2)
+        team_constraint_dir <- c(team_constraint_dir, "<=")
+        team_constraint_rhs <- c(team_constraint_rhs, max_player_from_a_team)
+}
+
+f.con <- matrix (c(goalkeepers, defenders, midfielders, strikers, temp$now_cost, team_constraint_vector), nrow=(5+length(clubs)), byrow=TRUE)
+f.dir <- c("=", "=", "=", "=", "<=", team_constraint_dir)
+f.rhs <- c(num_goalkeepers, num_defenders, num_midfielders, num_strikers, max_team_cost, team_constraint_rhs)
+```
+
+### Pris som proxy for dyktighet
+
+```{r}
+# OBJECTIVE FUNCTION: Points of all players
+# antar at det er dette som skal maksimeres (eller minimeres) - pris, altså
+f.obj <- temp$now_cost
+
+x <- lp ("max", f.obj, f.con, f.dir, f.rhs, all.bin=TRUE)
+x
+temp[which(x$solution==1),]
+lag_pris = temp[which(x$solution==1),]
+```
+
+### Popularitet som proxy for dyktighet
+
+```{r}
+# OBJECTIVE FUNCTION: Points of all players
+# antar at det er dette som skal maksimeres (eller minimeres) - popularitet
+f.obj <- temp$selected_by_percent
+
+x <- lp ("max", f.obj, f.con, f.dir, f.rhs, all.bin=TRUE)
+x
+temp[which(x$solution==1),]
+lag_popularitet = temp[which(x$solution==1),]
+```
+
+### Vurdering
+```{r}
+colSums(select(lag_popularitet,now_cost,selected_by_percent))
+colSums(select(lag_pris,now_cost,selected_by_percent))
+
+```
+
+

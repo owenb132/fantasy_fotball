@@ -1,0 +1,478 @@
+---
+title: "Eliteserien Fantasy Football med R"
+output:
+  html_document: default
+  html_notebook: default
+---
+
+```{r include=FALSE}
+#fjerner alt fra forrige gang
+rm(list = ls())
+#laster inn biblioteker
+library(httr)
+library(jsonlite)
+library(dplyr)
+library(readr)
+library(lpSolve)
+library(ggplot2)
+library(rpart)
+library(rattle)
+library(knitr)
+```
+
+Hva gjør du når kjentfolk inviterer deg til Eliteserien Fantasy Football, når Solskjær var stor i Norge sist du interesserte deg for norsk ligafotball? Prøver å analysere deg fram til noe fornuftig, selvsagt. 
+
+Målet med spillet er å maksimere antallet poeng, ved å velge spillerne som gir deg flest mulig poeng totalt. Spillere mottar poeng utifra spilletid, mål scort, målgivende pasning, og for å holde nullen. Forsvarsspillere får flere poeng for å holde nullen og score mål. Kort, selvmål, straffemiss og mange baklengsmål gir minuspoeng. Se poengsystemet på [hjelpesida](https://fantasy.vg.no/a/help) for mer info. 
+
+Første utfordring er å sette sammen et fornuftig lag. En må velge 15 spillere (fordelt på 2 keepere, 5 forsvarsspillere, 5 midtbanespillere og tre angrepsspillere), verdien kan ikke overstige 100 fantasimillioner (fantasillioner?), og en kan maks velge tre spillere fra et enkelt lag. Alt [i følge reglene](https://fantasy.vg.no/a/help).
+
+Det vil antakeligvis være strategiske valg involvert i hvilke deler av laget en prioriterer høyest - gir det flere poeng å ha en solid keeper og et solid forsvar, eller gode angrepsspillere? Er det bedre med et par dyre spillere og mange billige, eller at alle er omlag jevngode? Er det bedre med dyre enkeltspillere fra middelmådige lag eller middels spillere fra gode lag? Er et godt lag et lag som scorer mange mål eller slipper inn få (hvis den forskjellen gir mening i eliteserien)?
+
+Dette er et opimeringsproblem med diverse begresninger. Så hvis jeg kan finne datamateriale over alle spillere, deres fantasipengeverdi, posisjon, lagtilhørighet, popularitet og track record for 2016, bør det gå an å sette sammen noe som er ok - eller bedre enn rein gjetning, i hvert fall.
+
+##Datagrunnlaget
+Heldigvis liger datagrunnlaget VG bruker tilgjengelig i json-format i et API (?), og kan hentes med GET. 
+
+Vil VG protestere på slik bruk av dataene? Dette er jo ikke dokumentert noe sted, så vidt jeg ser. Terms of Service omtaler at spillet ikke kan kopieres, men det står ingenting om datagrunnlaget. Siden hver skifting av hvilke spillere som vises utløser et nytt slikt kall, bør ikke et par kall fra denne algoritmen være feil. 
+
+```{r}
+#dette ser ut til å hente ut informasjon om  spillere
+spillerdata = GET("https://fantasy.vg.no/drf/elements/")
+warn_for_status(spillerdata)
+```
+
+```{r,include=F}
+#konverterer innholdet fra json til data-frame
+df = fromJSON(content(spillerdata,"text"))
+#df = fromJSON(parsed)
+
+#lagrer en lokal kopi av dataene
+#bruker Sys.Date, men usikker på hvor ofte dataene oppdateres.
+df$dato = Sys.Date()
+write.csv2(df,paste0("data/spillerdata_",Sys.Date(),".csv"),row.names=F)
+```
+Hver enkelt spillers kampoppsett ligger også tilgjengelig, men ettersom henting av alle disse dataene kan  være litt mer krevende (og gi et litt flerdimensjonert datasett), så det lar jeg ligge inntil videre. 
+
+```{r, include=F}
+#dette ser ut til å hente ut et enkelt elements kampoppsett
+
+#hvis jeg skal lage en loop her må jeg legge inn ventetid før hvert nye kall
+
+#spillerdata_kamp = GET("https://fantasy.vg.no/drf/element-summary/1")
+#http_status(spillerdata_kamp)
+
+#prøver å hente ut fixtures, men denne er ikke like velforma som spillerdataene over. lar det ligge så lenge
+#spillerdata_kamp_parsed = content(spillerdata_kamp,"parsed")
+#df_test = fromJSON(content(spillerdata_kamp[5],"text"))
+#spillerdata_kamp_parsed[5]
+#str(spillerdata_kamp,max.level = 1)
+
+```
+
+Dette ga ved første nedlasting i mars et datasett på 400 observasjoner og 50 variabler. Dataene  tyder på at en av spillerne er solgt ut av Norge, og derfor ikke lenger er tilgjengelig. Så dette er dermed hele settet av spillere.
+
+Et par dager senere ga det 402 observasjoner - datasettet oppdateres tydeligvis av og til. Derfor la jeg til en dato-variabel for å holde oversikt.
+
+```{r}
+#de første observasjonene og variabelliste
+glimpse(df)
+```
+
+```{r include=F}
+#kode for å utforske variablene
+
+#lag har både team (1-16) og team_code (div nr.)
+#antall teamkoder
+nlevels(as.factor(df$team_code))
+nlevels(as.factor(df$team))
+#teamkodene
+levels(as.factor(df$team_code))
+levels(as.factor(df$team))
+
+#kan dette være posisjon?
+levels(as.factor(df$element_type))
+# 1 = keepere, 2 = forsvarsspillere, 3 = midtbanespillere, 4 = angrep
+
+#statuskoden har nivåene a, d, i og u 
+#- a ser ut til å være aktuelle spillere
+# u uaktuelle spillere
+# i er skadede spillere som neppe spiller neste kamp (25. mars var dette akillesskade, korsbåndskade, ryggskade)
+# d er småskadede spillere (25. mars var dette strekk)
+levels(as.factor(df$status))
+
+df$web_name[df$status=="u"]
+
+#selected by percent summerer til 1500, noe som gir mening når en må velge 15 spillere
+sum(as.numeric(df$selected_by_percent))
+
+#ser ut til å være en variant av id?
+nlevels(as.factor(df$code))
+
+#usikker på disse
+levels(as.factor(df$form))
+levels(as.factor(df$ep_this))
+levels(as.factor(df$ep_next))
+levels(as.factor(df$special))
+```
+
+Blant variablene ser følgende ut til å være relevante
+
+- id-variabel fra 1 til 400 (men også en code med 400 verdier)
+- en team_code og en team, som med 16 nivåer bør tilsvare lagene.
+- now_cost som bør være nåkostnad
+- element_type som ser ut til å være posisjon
+- status som koder hvorvidt en spiller er relevant eller ikke, og er skadet
+- selected_by_percent
+
+```{r}
+#datautvelgelse og grunnleggende omkoding
+
+#velger ut variabler relevant for å velge et lag her. filtrerer vekk status==u og i - vil ikke ha skadede spillere blant de første femten fra start
+temp = select(filter(df,status=="a"|status=="d"),id,web_name,first_name,second_name,team,element_type,now_cost, selected_by_percent)
+
+#konverterer tall
+temp$selected_by_percent = parse_number(temp$selected_by_percent)
+
+#lager et fullt navn
+temp$navn = paste(temp$first_name,temp$second_name)
+
+#koder om posisjonskode til posisjonsnavn
+# 1 = keepere, 2 = forsvarsspillere, 3 = midtbanespillere, 4 = angrep
+temp$posisjon = temp$element_type
+temp$posisjon = factor(temp$element_type,labels=c("Keeper","Forsvar","Midtbane","Angrep"))
+table(levels(as.factor(temp$posisjon)),levels(as.factor(temp$element_type)))
+
+#Koder om lagkode til lagnavn
+temp$team_navn = temp$team
+temp$team_navn = factor(temp$team,labels=c("AAFK","BRA","FKH","KBK","LSK","MOL","ODD","RBK","SAN","SO8","SOG","STB","SIF","TIL","VIF","VIK"))
+table(levels(as.factor(temp$team)),levels(as.factor(temp$team_navn)))
+```
+
+Anna nyttig for framtidige analyser inkluderer ulike variabler for endring av verdi, pris, poeng, poeng per kamp og en streng med nyheter. Flesteparten av disse er enda ikke i bruk.
+
+### Data om poeng i 2016
+
+Litt googling leder meg fram til [dette foruminnlegget](http://vgd.no/sport/fotball-spill/tema/1836871/tittel/vgd-eliteserien-fantasy-17/innlegg/45924375/), der forumdeltakeren Fpl_star har laget et datasett på 2016-data for 140 spillere. Dessverre får jeg ikke til å full_join dette sammen med det øvrige datasettet p.g.a. noe krøll med karakterene, så det må litt mekking til i excel før det kan merges inn. 
+
+```{r,include=FALSE}
+data_vgforum <- read_delim("D:/R/fantasy_fotball/data/2016_data_vgforum.csv",
+";", escape_double = FALSE, col_types = cols(X1 = col_skip(),
+X18 = col_skip(), X19 = col_skip(),
+X20 = col_skip(), X21 = col_skip(),
+X22 = col_skip()), locale = locale(decimal_mark = ",",
+grouping_mark = ";"), trim_ws = TRUE,
+skip = 2)
+#gir nytt navn til kolonne 7
+names(data_vgforum)[7] = "Mal"
+
+#joiner
+temp = left_join(temp,data_vgforum,by="id")
+
+#Dette bør være 137 spillere
+sum(!is.na(temp$Spiller))
+
+
+
+
+
+```
+
+I tillegg til info jeg allerede har, gir datasettet info om 137 spilleres kamper, mål, assist og cleen sheets i 2016, hvor mange poeng dette hadde gitt hver for seg og totalt, samt beregning av hvor mange poeng per kamp dette tilsvarer og hvor mange poeng per fantasimillion dette tilsvarer.
+
+Ettersom det bare er et subset av alle spillerne som har fått denne informasjonen, og siden Fpl_star ikke ser ut til å forklare hvorfor han har tatt disse spillerne, må jeg ta en titt for å se om dette er et tilfeldig utvalg.
+
+```{r,echo=F}
+#prøver å kjapt regne ut hvor mange spillere fra de ulike posisjonene datasettet har info om.
+temp$mer_info = !is.na(temp$Spiller)
+temp$mer_info[temp$mer_info==T] = "vg-data"
+temp$mer_info[temp$mer_info==F] = "ikke-vg-data"
+
+temp = group_by(temp,as.factor(mer_info))
+kable(summarise(temp,
+          andel_keepere = sum(!is.na(id[posisjon=="Keeper"]))/ sum(!is.na(id)),
+          andel_forsvar = sum(!is.na(id[posisjon=="Forsvar"]))/ sum(!is.na(id)),
+          andel_midtbane = sum(!is.na(id[posisjon=="Midtbane"]))/ sum(!is.na(id)),
+          andel_angrep = sum(!is.na(id[posisjon=="Angrep"]))/ sum(!is.na(id))
+          ))
+
+qplot(now_cost,data=temp,facets=posisjon+mer_info~.,geom="bar", color=mer_info) +
+        scale_x_continuous(breaks=seq(30,130,5))
+
+qplot(selected_by_percent,data=temp,facets=posisjon~mer_info+.,color=mer_info)
+
+```
+
+Utvalget ser ikke veldig representativt ut. Som vi ser her er fordelinga av spillere i datasettet fra Fpl_star ganske annerledes fra hele datasettet: det er ingen keepere, om lag samme andel forsvarere, flere angripere og langt flere midtbanespillere. Spillerne er langt jevnere i verdi, noe som særlig gjelder midtbanespillerne - det er langt færre av de lavest prisede. Det er også langt færre av de minst valgte spillerne som har poengdata. Det er allikevel mer informasjon enn vi hadde uten - så får vi se hva vi gjør med det.
+
+```{r, include=F}
+#Det ser også ut til å være et API på [whoscored.com](https://www.whoscored.com/Regions/165/Tournaments/41/Seasons/6115/Stages/13179/PlayerStatistics/Norway-Eliteserien-2016) som kanskje kan brukes. Heller ikke det her oppfører seg rett fram, dessverre (kanskje fordi gjengen bak nettsida selger data for £200 og oppover).
+
+#test = GET("https://www.whoscored.com/StatisticsFeed/1/GetPlayerStatistics?category=summary&subcategory=all&statsAccumulationType=0&isCurrent=true&playerId=&teamIds=&matchId=&stageId=13179&tournamentOptions=41&sortBy=Rating&sortAscending=&age=&ageComparisonType=&appearances=&appearancesComparisonType=&field=Overall&nationality=&positionOptions=&timeOfTheGameEnd=&timeOfTheGameStart=&isMinApp=true&page=&includeZeroValues=&numberOfPlayersToPick=10")
+#http_status(test)
+#parsed = content(test,"parsed")
+
+#konverterer innholdet fra json til data-frame
+#df_whoscored = fromJSON(content(test,"text"))
+#df = fromJSON(parsed)
+
+#lagrer en lokal kopi av dataene
+#bruker Sys.Date selv om jeg er usikker på om dette er data som oppdateres live.
+#fra og med 25. mars legger jeg også til en dato-kolonne i datafila
+#df$dato = Sys.Date()
+#write.csv2(df,paste0("data/spillerdata_",Sys.Date(),".csv"),row.names=F)
+
+```
+
+### Datautforsking av spillerne
+
+```{r,echo=F}
+qplot(now_cost,data=temp,facets=posisjon~.,geom="bar") +
+        scale_x_continuous(breaks=seq(30,130,5))
+```
+
+Det tydeligste mønsteret herifra er at spennet i priser øker med offensiviteten (hvis det er et ord) til spillerne - spisser har større variasjon og koster mer enn midtbanespillere, midtbanespillere mer enn forsvarsspillere og forsvarsspillere mer enn keepere. 
+```{r,echo=F}
+qplot(selected_by_percent,data=temp,facets=posisjon~.)
+```
+
+Et tilsvarende mønster ser ikke ut til å være i valgene av spillere - det ser ut til at det er flere forsvarsspillere og midtbanespillere som er valgt av færre, og noen valg av angrepsspiller som nesten alle har gjort.
+
+
+```{r,echo=F}
+qplot(Poeng,data=temp,facets=posisjon~.)
+
+```
+
+Hvordan er poengene fordelt? Ganske jevnt og nesten klokkeforma, faktisk, særlig for Midtbanespillerne (som utgjør nesten halvparten av spillerne vi har informasjon om). Kanskje litt overraskende sett opp imot prisbildet over, så er det særlig forsvarsspillere som hanker inn flest poeng, fulgt av midtbane og angrep.
+
+```{r,echo=F}
+qplot(now_cost,selected_by_percent,data=temp,facets=~posisjon, geom = c("point", "smooth"), method="lm")
+
+summary(lm(selected_by_percent~now_cost,data=temp))
+
+```
+
+Når det gjelder samvariasjon mellom popularitet og pris, ser vi at denne stort sett følger en lineær trend - jo høyere pris, jo høyere popularitet. Det er imidlertid flere spillere som ligger over (og under), noe som kan bety at de er bedre enn prisen tilsier, eller at fantasy-deltakerne overvurderer dem. Sagt på en anna måte: innafor hver priskategori er det stor variasjon i hvor populære de enkelte spillerne er, noe som ikke forklares av pris alene.
+
+```{r,echo=F}
+qplot(now_cost,Poeng,data=temp, geom = c("point", "smooth"))
+qplot(selected_by_percent,Poeng,data=temp,geom = c("point", "smooth"))
+
+summary(lm(Poeng~selected_by_percent+now_cost,data=temp))
+```
+
+Det er også (i hovedsak) en positiv sammenheng mellom popularitet og beregna poeng for 2016, og mellom nåkostnad og beregna poeng: jo høyere pris og jo høyere popularitet, jo flere poeng ville spillerne ha sanka i 2016. (For de 137 spillerne vi har data på). Lineær regresjon viser at sammenhengen er sterkest med popularitetsindikatoren, og at ingen av variablene forklarer mye av variasjonen i poengsummen. Sagt på en anna måte: det er ikke sikkert poengsummen for 2016 har vært viktig for popularitet og prissetting for årets sesong.
+
+På den ene sida er det litt urovekkende for modelleringa her - hvis kostnad og popularitet i liten grad forutsier poeng, så ligger jeg tynt an. Det at de andre dataanalyseeksemplene jeg har sett har vært poengmaksimeringsforsøk gir også dårlige vibber. På den andre sida er poengene beregna for 2016 - så kanskje ekspertene og folk flest vet noe om årets sesong som Poengene ikke tar høyde for?
+
+## Indikator for dyktighet
+Siden jeg ikke aner, og siden jeg har lite data å se på tidligere prestasjoner med, tenker jeg at i første omgang så bør:
+
+- prisen være en slags ekspertvurdering av dyktighet (noe VG selv sier), 
+- hvor mange som har valgt en spiller være folk-flests vurdering av dyktighet,
+- fantasy-poeng for 2016 gi en indikasjon på potensiale,
+- et lags gjennomsnittlige dyktighet påvirke en enkeltsspillers poengpotensial.
+
+### Pris og popularitet
+Kan det være fordeler å hente ved å kombinere prisen - som proxy for ekspert-vurderinger - og populariteten, som proxy for folks vurderinger? Dette forutsetter i så fall litt normalisering av variablene, slik at de ligger på samme skala. 
+
+Siden antallet spillere på hver posisjon er satt, skulle en kanskje mene at det gir mening å normaliserer innafor hver spillerkategori - en kan uansett ikke fylle opp laget med dyre angrepsspillere. På den måten ville vi vite  (forhåpentligvis) noe om hvem som er den beste keeperen, men mindre om hvor mye bedre en angrepsspiller er enn en keeper). På den andre siden skal vi jo ha det beste totale laget - og da må optimeringsalgoritmen kunne vurdere om det gir flere potensielle poeng å kjøpe dyrere forsvarsspillere eller dyrere angrepsspillere. Derfor normaliserer vi mot totalen.
+
+```{r, echo=F}
+temp = ungroup(temp)
+#normaliserer først kostnad innenfor hver posisjon
+temp = mutate(temp, now_cost_norm = (now_cost - min(now_cost, na.rm=TRUE))/ (max(now_cost,na.rm=TRUE) -min(now_cost, na.rm=TRUE)))
+
+#så popularitet
+temp = mutate(temp, selected_norm = (selected_by_percent - min(selected_by_percent, na.rm=TRUE))/ (max(selected_by_percent,na.rm=TRUE) -min(selected_by_percent, na.rm=TRUE)))
+
+#plotter mot hverandre
+qplot(now_cost_norm, selected_norm, data=temp,facets=~posisjon, geom = c("point", "smooth"), method="lm")
+
+#slår dem sammen og lar begge telle like mye
+temp$verdi = (temp$now_cost_norm*0.5) + (temp$selected_norm*0.5)
+qplot(verdi,data=temp,facets=~posisjon)
+
+```
+
+### Poeng fra 2016
+Nå gjelder det og også bake inn poengene fra 2016. Hva gjør vi spillerne uten poeng? Lar vi dem stå uten poeng, gir vi dem medianen eller bruker vi andre estimeringsteknikker?
+
+Siden jeg delvis gjør dette for å teste ut div. estimeringsteknikker bruker jeg et decision tree. Ikke egentlig en god grunn for å bruke en metode - men.
+
+```{r,echo=F}
+
+#her hadde jeg egentlig koda meg inn i et hjørne med å bruke noe som først beregnes seinere i modellen (og så også endra beregna slik at den måtte ha poenga for å funke)
+
+#estimerer poeng med et decision tree - den lineære modellen gir jo dårlig fit, som lm over har vist.
+predicted_points <- rpart(Poeng ~ now_cost + selected_by_percent + posisjon + team_navn + verdi,
+                       data=temp[!is.na(temp$Poeng),], method="anova")
+fancyRpartPlot(predicted_points)
+temp$Poeng[is.na(temp$Poeng)] <- predict(predicted_points,newdata=temp[is.na(temp$Poeng),])
+
+#estimeringsteknikk to: estimerer de fire delene som poengene består av, og regner poeng derifra.
+
+#dropper dette 
+
+#noen plots
+qplot(Poeng,data=temp,facets=mer_info~.)
+qplot(Poeng,data=temp,facets=posisjon~.)
+
+#kan gjerne lese meg opp på evaluering av om dette var så lurt på http://stats.stackexchange.com/questions/49416/decision-tree-model-evaluation-for-training-set-vs-testing-set-in-r
+
+qplot(verdi,Poeng,data=temp,color=mer_info,geom = c("point", "smooth"))
+
+```
+
+Dette ser litt pussig ut, men ok. Vi slenger det inn i verdi-indikatoren. 
+
+```{r,echo=F}
+temp = ungroup(temp)
+temp = mutate(temp, poeng_norm = (Poeng - min(Poeng, na.rm=TRUE))/ (max(Poeng,na.rm=TRUE) -min(Poeng, na.rm=TRUE)))
+qplot(poeng_norm,data=temp)
+#slår dem sammen og lar kostnad og popularitet telle 0.4, og poeng 0.2
+temp$verdi_poengjustert = (temp$now_cost_norm*0.4) + (temp$selected_norm*0.4) + (temp$poeng_norm*0.2)
+qplot(verdi,data=temp,facets=posisjon~.)
+qplot(verdi_poengjustert,data=temp,facets=posisjon~.)
+```
+
+### Lagstyrke
+Videre kan det også være verdt å se på om spillere på lag som vurderes som sterkere bør få ekstra poeng.
+
+```{r,echo=F}
+qplot(now_cost,data=temp,facets=~team_navn)
+qplot(selected_by_percent,data=temp,facets=~team_navn)
+
+#beregner sum og gjennomsnitt av spillerverdi for hvert lag, og lister dem desc
+temp = group_by(temp,team_navn)
+kable(summarise_each(temp,c("mean(.,na.rm=T)","sum(.,na.rm=T)"),verdi)%>%
+        arrange(desc(mean)))
+
+#beregner en mean verdi, og normaliserer den mot totalen
+temp = group_by(temp,team)%>%
+        summarise(verdi_meanteam=mean(verdi))%>%
+        inner_join(temp,by="team")
+temp = mutate(temp, verdi_meanteam_norm = (verdi_meanteam - min(verdi_meanteam, na.rm=TRUE))/ (max(verdi_meanteam,na.rm=TRUE) -min(verdi_meanteam, na.rm=TRUE)))
+
+#justerer spillerverdier med gjennomsnittlig lagverdi, lagverdi teller 0.2
+temp$verdi_teamjustert = (temp$now_cost_norm*0.3) + (temp$selected_norm*0.3) + (temp$poeng_norm*0.2) + (temp$verdi_meanteam_norm*0.2)
+
+```
+
+```{r, include=FALSE}
+
+#det kan være bedre å bruke formelen omtalt på Linear Digressions her - james-stein-estimatoren - som en justeringsfaktor? Med mindre den forutsetter en binomialfordeling eller normalfordeling? Får ikke helt til dette, og lar det ligge
+
+#temp = group_by(temp,team)%>%
+#        summarise(verdi_var_team=var(verdi),
+#                  antall_spillere=sum(is.na(id)==F))%>%
+#        inner_join(temp,by="team")
+#temp = mutate(temp, verdi_shrinkage = (1-((antall_spillere-2)*verdi_var_team^2)/abs(verdi)^2)*verdi)
+
+#plotter forskjellene
+#qplot(verdi_teamjustert,data=temp)
+#qplot(verdi_shrinkage,data=temp)
+#qplot(verdi_teamjustert,data=temp,facets=~team_navn)
+#qplot(verdi_shrinkage,data=temp,facets=~team_navn)
+#qplot(verdi_shrinkage,verdi_teamjustert,data=temp)
+
+```
+
+## Utvelgelse av laget
+
+Heldigvis har Premier League Fantasy Football vært ei greie ganske lenge, slik at det ligger en del [pekere](https://llimllib.github.io/fantasypl/) [og andres forsøk] (http://pena.lt/y/2014/07/24/mathematically-optimising-fantasy-football-teams/) rundt. Analysen er basert på slike ting funnet på nettet.
+
+For å løse dette, ser jeg på det som et lineært maksimeringsproblem med begrensninger - som kan løses med lpSolve-pakken.
+
+```{r, include=FALSE}
+#Setter først felles constraints mm
+# CONSTRAINTS:
+num_goalkeepers <- 2
+num_defenders <- 5
+num_midfielders <- 5
+num_strikers <- 3
+max_team_cost <- 1000
+# set "max_player_from_a_team <- 15" to ignore this constraint
+max_player_from_a_team <- 3 		
+
+# Create constraint vectors
+goalkeepers <- temp$element_type==1
+goalkeepers[goalkeepers==T] <- 1
+goalkeepers[goalkeepers==F] <- 0
+
+defenders <- temp$element_type==2
+defenders[defenders==T] <- 1
+defenders[defenders==F] <- 0
+
+midfielders <- temp$element_type==3
+midfielders[midfielders==T] <- 1
+midfielders[midfielders==F] <- 0
+
+strikers <- temp$element_type==4
+strikers[strikers==T] <- 1
+strikers[strikers==F] <- 0
+
+# constraint for max # players from a team
+clubs <- sort(unique(temp$team))
+
+team_constraint_vector <- c()
+team_constraint_dir <- c()
+team_constraint_rhs <- c()
+
+for (i in 1:length(clubs)){
+        temp_2 <- temp$team==as.character(clubs[i])
+        temp_2[temp_2==T] <- 1
+        temp_2[temp_2==F] <- 0
+        
+        team_constraint_vector <- c(team_constraint_vector, temp_2)
+        team_constraint_dir <- c(team_constraint_dir, "<=")
+        team_constraint_rhs <- c(team_constraint_rhs, max_player_from_a_team)
+}
+
+f.con <- matrix (c(goalkeepers, defenders, midfielders, strikers, temp$now_cost, team_constraint_vector), nrow=(5+length(clubs)), byrow=TRUE)
+f.dir <- c("=", "=", "=", "=", "<=", team_constraint_dir)
+f.rhs <- c(num_goalkeepers, num_defenders, num_midfielders, num_strikers, max_team_cost, team_constraint_rhs)
+```
+
+```{r,include=F}
+#Hadde opprinnelig med flere ulike løsninger av de ulike indikatorene her. Endte opp med å velge den mest sammensatte indikatoren, uten at begrunnelsen er dataanalytisk - så da tar jeg ut de øvrige.
+
+# OBJECTIVE FUNCTION: Popularitet
+# antar at det er dette som skal maksimeres (eller minimeres) - popularitet
+#f.obj <- temp$selected_by_percent
+
+#x <- lp ("max", f.obj, f.con, f.dir, f.rhs, all.bin=TRUE)
+#x
+#temp[which(x$solution==1),]
+#lag_popularitet = temp[which(x$solution==1),]
+#temp$solution_popularitet = x$solution
+#qplot(now_cost,selected_by_percent,data=temp,color=solution_popularitet)
+```
+
+```{r}
+# OBJECTIVE FUNCTION: popularitet, pris og lagstyrke
+# antar at det er dette som skal maksimeres (eller minimeres) - 
+f.obj <- temp$verdi_teamjustert
+
+x <- lp ("max", f.obj, f.con, f.dir, f.rhs, all.bin=TRUE)
+x
+kable(temp[which(x$solution==1),c(3,8,9,10,11,12,25,36)])
+temp$solution = x$solution
+```
+
+### Vurdering
+```{r,echo=F}
+qplot(now_cost,selected_by_percent,data=temp,color=as.factor(solution))
+qplot(now_cost,selected_by_percent,data=temp,color=as.factor(solution))
+qplot(now_cost,verdi_teamjustert,data=temp,as.factor(solution))
+qplot(as.factor(solution),verdi_teamjustert,data=temp,geom="boxplot")
+```
+
+Jeg tar sjansen på å velge laget som er beregna ut i fra popularitet, pris, poeng og lag. Antakeligvis kunne jeg brukt _mye_ mer tid på å se på følsomhet for normalisering og ulike løsninger. 
+
+```{r}
+lag_start = filter(temp,solution==1)
+data_start = temp
+write.csv2(lag_start,"data/startlag.csv",row.names=F)
+write.csv2(lag_start,"data/datagrunnlag_start.csv",row.names=F)
+```
