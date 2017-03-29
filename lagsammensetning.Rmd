@@ -1,8 +1,7 @@
 ---
 title: "Eliteserien Fantasy Football med R"
-output:
-  html_document: default
-  html_notebook: default
+output: github_document
+html_notebook: default
 ---
 
 ```{r include=FALSE}
@@ -28,14 +27,14 @@ Første utfordring er å sette sammen et fornuftig lag. En må velge 15 spillere
 
 Det vil antakeligvis være strategiske valg involvert i hvilke deler av laget en prioriterer høyest - gir det flere poeng å ha en solid keeper og et solid forsvar, eller gode angrepsspillere? Er det bedre med et par dyre spillere og mange billige, eller at alle er omlag jevngode? Er det bedre med dyre enkeltspillere fra middelmådige lag eller middels spillere fra gode lag? Er et godt lag et lag som scorer mange mål eller slipper inn få (hvis den forskjellen gir mening i eliteserien)?
 
-Dette er et opimeringsproblem med diverse begresninger. Så hvis jeg kan finne datamateriale over alle spillere, deres fantasipengeverdi, posisjon, lagtilhørighet, popularitet og track record for 2016, bør det gå an å sette sammen noe som er ok - eller bedre enn rein gjetning, i hvert fall.
+Uansett - dette er et opimeringsproblem med diverse begresninger. Så hvis jeg kan finne datamateriale over alle spillere, deres fantasipengeverdi, posisjon, lagtilhørighet, popularitet og track record for 2016, bør det gå an å sette sammen noe som er ok - eller bedre enn rein gjetning, i hvert fall.
 
 ##Datagrunnlaget
 Heldigvis liger datagrunnlaget VG bruker tilgjengelig i json-format i et API (?), og kan hentes med GET. 
 
 Vil VG protestere på slik bruk av dataene? Dette er jo ikke dokumentert noe sted, så vidt jeg ser. Terms of Service omtaler at spillet ikke kan kopieres, men det står ingenting om datagrunnlaget. Siden hver skifting av hvilke spillere som vises utløser et nytt slikt kall, bør ikke et par kall fra denne algoritmen være feil. 
 
-```{r}
+```{r, echo=F}
 #dette ser ut til å hente ut informasjon om  spillere
 spillerdata = GET("https://fantasy.vg.no/drf/elements/")
 warn_for_status(spillerdata)
@@ -108,6 +107,10 @@ sum(as.numeric(df$selected_by_percent))
 #ser ut til å være en variant av id?
 nlevels(as.factor(df$code))
 
+#noe her jeg burde være klar over?
+levels(as.factor(df$chance_of_playing_this_round))
+levels(as.factor(df$chance_of_playing_next_round))
+
 #usikker på disse
 levels(as.factor(df$form))
 levels(as.factor(df$ep_this))
@@ -128,7 +131,7 @@ Blant variablene ser følgende ut til å være relevante
 #datautvelgelse og grunnleggende omkoding
 
 #velger ut variabler relevant for å velge et lag her. filtrerer vekk status==u og i - vil ikke ha skadede spillere blant de første femten fra start
-temp = select(filter(df,status=="a"|status=="d"),id,web_name,first_name,second_name,team,element_type,now_cost, selected_by_percent)
+temp = select(filter(df,status=="a"|status=="d"),id,web_name,first_name,second_name,team,element_type,now_cost, selected_by_percent,status)
 
 #konverterer tall
 temp$selected_by_percent = parse_number(temp$selected_by_percent)
@@ -146,6 +149,7 @@ table(levels(as.factor(temp$posisjon)),levels(as.factor(temp$element_type)))
 temp$team_navn = temp$team
 temp$team_navn = factor(temp$team,labels=c("AAFK","BRA","FKH","KBK","LSK","MOL","ODD","RBK","SAN","SO8","SOG","STB","SIF","TIL","VIF","VIK"))
 table(levels(as.factor(temp$team)),levels(as.factor(temp$team_navn)))
+
 ```
 
 Anna nyttig for framtidige analyser inkluderer ulike variabler for endring av verdi, pris, poeng, poeng per kamp og en streng med nyheter. Flesteparten av disse er enda ikke i bruk.
@@ -170,11 +174,6 @@ temp = left_join(temp,data_vgforum,by="id")
 
 #Dette bør være 137 spillere
 sum(!is.na(temp$Spiller))
-
-
-
-
-
 ```
 
 I tillegg til info jeg allerede har, gir datasettet info om 137 spilleres kamper, mål, assist og cleen sheets i 2016, hvor mange poeng dette hadde gitt hver for seg og totalt, samt beregning av hvor mange poeng per kamp dette tilsvarer og hvor mange poeng per fantasimillion dette tilsvarer.
@@ -198,7 +197,7 @@ kable(summarise(temp,
 qplot(now_cost,data=temp,facets=posisjon+mer_info~.,geom="bar", color=mer_info) +
         scale_x_continuous(breaks=seq(30,130,5))
 
-qplot(selected_by_percent,data=temp,facets=posisjon~mer_info+.,color=mer_info)
+qplot(selected_by_percent,data=temp,facets=posisjon+mer_info~.,color=mer_info)
 
 ```
 
@@ -286,9 +285,6 @@ temp = mutate(temp, now_cost_norm = (now_cost - min(now_cost, na.rm=TRUE))/ (max
 #så popularitet
 temp = mutate(temp, selected_norm = (selected_by_percent - min(selected_by_percent, na.rm=TRUE))/ (max(selected_by_percent,na.rm=TRUE) -min(selected_by_percent, na.rm=TRUE)))
 
-#plotter mot hverandre
-qplot(now_cost_norm, selected_norm, data=temp,facets=~posisjon, geom = c("point", "smooth"), method="lm")
-
 #slår dem sammen og lar begge telle like mye
 temp$verdi = (temp$now_cost_norm*0.5) + (temp$selected_norm*0.5)
 qplot(verdi,data=temp,facets=~posisjon)
@@ -316,7 +312,6 @@ temp$Poeng[is.na(temp$Poeng)] <- predict(predicted_points,newdata=temp[is.na(tem
 
 #noen plots
 qplot(Poeng,data=temp,facets=mer_info~.)
-qplot(Poeng,data=temp,facets=posisjon~.)
 
 #kan gjerne lese meg opp på evaluering av om dette var så lurt på http://stats.stackexchange.com/questions/49416/decision-tree-model-evaluation-for-training-set-vs-testing-set-in-r
 
@@ -329,15 +324,14 @@ Dette ser litt pussig ut, men ok. Vi slenger det inn i verdi-indikatoren.
 ```{r,echo=F}
 temp = ungroup(temp)
 temp = mutate(temp, poeng_norm = (Poeng - min(Poeng, na.rm=TRUE))/ (max(Poeng,na.rm=TRUE) -min(Poeng, na.rm=TRUE)))
-qplot(poeng_norm,data=temp)
+
 #slår dem sammen og lar kostnad og popularitet telle 0.4, og poeng 0.2
 temp$verdi_poengjustert = (temp$now_cost_norm*0.4) + (temp$selected_norm*0.4) + (temp$poeng_norm*0.2)
-qplot(verdi,data=temp,facets=posisjon~.)
 qplot(verdi_poengjustert,data=temp,facets=posisjon~.)
 ```
 
 ### Lagstyrke
-Videre kan det også være verdt å se på om spillere på lag som vurderes som sterkere bør få ekstra poeng.
+Videre kan det også være verdt å se på om spillere på lag som vurderes som sterkere bør få ekstra poeng. Vi ser i hvert fall at det er forskjell på kostnadsfordeling og popularitet blant lagene. For å få det enda tydeligere fram beregner jeg en sum og et gjennomsnitt av indikatoren vi til nå har beregna.
 
 ```{r,echo=F}
 qplot(now_cost,data=temp,facets=~team_navn)
@@ -350,7 +344,7 @@ kable(summarise_each(temp,c("mean(.,na.rm=T)","sum(.,na.rm=T)"),verdi)%>%
 
 #beregner en mean verdi, og normaliserer den mot totalen
 temp = group_by(temp,team)%>%
-        summarise(verdi_meanteam=mean(verdi))%>%
+        summarise(verdi_meanteam=mean(verdi_poengjustert))%>%
         inner_join(temp,by="team")
 temp = mutate(temp, verdi_meanteam_norm = (verdi_meanteam - min(verdi_meanteam, na.rm=TRUE))/ (max(verdi_meanteam,na.rm=TRUE) -min(verdi_meanteam, na.rm=TRUE)))
 
@@ -358,6 +352,8 @@ temp = mutate(temp, verdi_meanteam_norm = (verdi_meanteam - min(verdi_meanteam, 
 temp$verdi_teamjustert = (temp$now_cost_norm*0.3) + (temp$selected_norm*0.3) + (temp$poeng_norm*0.2) + (temp$verdi_meanteam_norm*0.2)
 
 ```
+
+Jeg lar gjennomsnittet telle inn i totalindikatoren, og lar den telle 20 %. Kostnad og popularitet veier allerede 30 % hver, og (estimert) poengsum for 2016 veier 20 %.
 
 ```{r, include=FALSE}
 
@@ -456,15 +452,14 @@ f.obj <- temp$verdi_teamjustert
 
 x <- lp ("max", f.obj, f.con, f.dir, f.rhs, all.bin=TRUE)
 x
-kable(temp[which(x$solution==1),c(3,8,9,10,11,12,25,36)])
+kable(temp[which(x$solution==1),c(3,11,8,9,26,10,12,37)])
 temp$solution = x$solution
 ```
 
 ### Vurdering
 ```{r,echo=F}
 qplot(now_cost,selected_by_percent,data=temp,color=as.factor(solution))
-qplot(now_cost,selected_by_percent,data=temp,color=as.factor(solution))
-qplot(now_cost,verdi_teamjustert,data=temp,as.factor(solution))
+qplot(now_cost,verdi_teamjustert,data=temp,color=as.factor(solution))
 qplot(as.factor(solution),verdi_teamjustert,data=temp,geom="boxplot")
 ```
 
