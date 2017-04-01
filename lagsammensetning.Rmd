@@ -254,9 +254,10 @@ summary(lm(selected_by_percent~now_cost,data=temp))
 Når det gjelder samvariasjon mellom popularitet og pris, ser vi at denne stort sett følger en lineær trend - jo høyere pris, jo høyere popularitet. Det er imidlertid flere spillere som ligger over (og under), noe som kan bety at de er bedre enn prisen tilsier, eller at fantasy-deltakerne overvurderer dem. Sagt på en anna måte: innafor hver priskategori er det stor variasjon i hvor populære de enkelte spillerne er, noe som ikke forklares av pris alene.
 
 ```{r,echo=F}
+par(mfrow=c(1,2))
 qplot(now_cost,Poeng,data=temp, geom = c("point", "smooth"))
 qplot(selected_by_percent,Poeng,data=temp,geom = c("point", "smooth"))
-
+par(mfrow=c(1,1))
 summary(lm(Poeng~selected_by_percent+now_cost,data=temp))
 ```
 
@@ -309,7 +310,11 @@ temp$Poeng[is.na(temp$Poeng)] <- predict(predicted_points,newdata=temp[is.na(tem
 #estimeringsteknikk to: estimerer de fire delene som poengene består av, og regner poeng derifra.
 
 #dropper dette 
+```
 
+Det et slikt decision tree gjør er å dele dataene inn på en (matematisk) optimal måte. Første inndeling gjøres ved å skille mellom de som har en verdi lavere enn 0.03, og de som har høyere, og så videre. 
+
+```{r,echo=F}
 #noen plots
 qplot(Poeng,data=temp,facets=mer_info~.)
 
@@ -327,7 +332,11 @@ temp = mutate(temp, poeng_norm = (Poeng - min(Poeng, na.rm=TRUE))/ (max(Poeng,na
 
 #slår dem sammen og lar kostnad og popularitet telle 0.4, og poeng 0.2
 temp$verdi_poengjustert = (temp$now_cost_norm*0.4) + (temp$selected_norm*0.4) + (temp$poeng_norm*0.2)
+
+par(mfrow=c(2,1))
+qplot(verdi,data=temp,facets=posisjon~.)
 qplot(verdi_poengjustert,data=temp,facets=posisjon~.)
+par(mfrow=c(1,1))
 ```
 
 ### Lagstyrke
@@ -336,6 +345,7 @@ Videre kan det også være verdt å se på om spillere på lag som vurderes som 
 ```{r,echo=F}
 qplot(now_cost,data=temp,facets=~team_navn)
 qplot(selected_by_percent,data=temp,facets=~team_navn)
+qplot(verdi_poengjustert,data=temp,facets=~team_navn)
 
 #beregner sum og gjennomsnitt av spillerverdi for hvert lag, og lister dem desc
 temp = group_by(temp,team_navn)
@@ -381,6 +391,9 @@ Heldigvis har Premier League Fantasy Football vært ei greie ganske lenge, slik 
 For å løse dette, ser jeg på det som et lineært maksimeringsproblem med begrensninger - som kan løses med lpSolve-pakken.
 
 ```{r, include=FALSE}
+#i tilfelle algoritmen bruker seed - noe jeg tror den gjør? - setter jeg det
+set.seed(1106)
+
 #Setter først felles constraints mm
 # CONSTRAINTS:
 num_goalkeepers <- 2
@@ -452,18 +465,24 @@ f.obj <- temp$verdi_teamjustert
 
 x <- lp ("max", f.obj, f.con, f.dir, f.rhs, all.bin=TRUE)
 x
-kable(temp[which(x$solution==1),c(3,11,13,8,9,26,10,12,37)])
+kable(arrange(temp[which(x$solution==1),c(3,11,13,8,9,26,10,12,37)],posisjon,desc(verdi_teamjustert)))
 temp$solution = x$solution
 ```
 
 ### Vurdering
 ```{r,echo=F}
+par(mfrow=c(1,2))
 qplot(now_cost,selected_by_percent,data=temp,color=as.factor(solution))
 qplot(now_cost,verdi_teamjustert,data=temp,color=as.factor(solution))
+par(mfrow=c(1,1))
 qplot(as.factor(solution),verdi_teamjustert,data=temp,geom="boxplot")
 ```
 
-Jeg tar sjansen på å velge laget som er beregna ut i fra popularitet, pris, poeng og lag. Antakeligvis kunne jeg brukt _mye_ mer tid på å se på følsomhet for normalisering og ulike løsninger. 
+Jeg tar sjansen på å velge laget som er beregna ut i fra popularitet, pris, poeng og lag. Antakeligvis kunne jeg brukt _mye_ mer tid på å se på følsomhet for normalisering og ulike løsninger, men siden jeg mangler noe å benchmarke dette mot - noen faktiske poeng - så må jeg bare prøve og se.
+
+Løsningen varierte noe over tid de nærmeste dagene mot fristen 1. april. Siden 30 % av dyktighetsindikatoren er popularitet, gir jo dette mening - mange melder antakeligvis ikke inn laget sitt før rett før fristen (når jeg først meldte inn laget mitt 29. mars var det ca. 36 000 spillere med, 31. mars var det ca. 42 500). Små endringer selv etter kort tid tyder på at løsninga ikke er veldig forskjellig fra løsning nr. 2.
+
+Det er også grunn til å lure på om jeg burde gjort noe mer for å balansere en første-ellever mot benken - er det virkelig verdt pengene å ha to keepere fra øverste prisklasse, når kun en av dem kan høste poeng om gangen?
 
 ```{r}
 lag_start = filter(temp,solution==1)
