@@ -52,7 +52,7 @@ glimpse(df)
     ## $ cost_change_event_fall       <int> 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
     ## $ in_dreamteam                 <lgl> FALSE, FALSE, FALSE, FALSE, FALSE...
     ## $ dreamteam_count              <int> 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-    ## $ selected_by_percent          <chr> "5.0", "0.7", "3.9", "1.8", "2.3"...
+    ## $ selected_by_percent          <chr> "5.1", "0.6", "3.9", "1.9", "2.2"...
     ## $ form                         <chr> "0.0", "0.0", "0.0", "0.0", "0.0"...
     ## $ transfers_out                <int> 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
     ## $ transfers_in                 <int> 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
@@ -156,8 +156,8 @@ Ettersom det bare er et subset av alle spillerne som har fått denne informasjon
 
 | as.factor(mer\_info) |  andel\_keepere|  andel\_forsvar|  andel\_midtbane|  andel\_angrep|
 |:---------------------|---------------:|---------------:|----------------:|--------------:|
-| ikke-vg-data         |       0.1604478|       0.3358209|        0.3358209|      0.1679104|
-| vg-data              |       0.0000000|       0.3138686|        0.4744526|      0.2116788|
+| ikke-vg-data         |       0.1622642|       0.3396226|        0.3320755|      0.1660377|
+| vg-data              |       0.0000000|       0.3161765|        0.4705882|      0.2132353|
 
 ![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-9-1.png)
 
@@ -181,7 +181,7 @@ Et tilsvarende mønster ser ikke ut til å være i valgene av spillere - det ser
 
     ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
-    ## Warning: Removed 268 rows containing non-finite values (stat_bin).
+    ## Warning: Removed 265 rows containing non-finite values (stat_bin).
 
 ![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-13-1.png)
 
@@ -197,34 +197,34 @@ Hvordan er poengene fordelt? Ganske jevnt og nesten klokkeforma, faktisk, særli
     ## 
     ## Residuals:
     ##    Min     1Q Median     3Q    Max 
-    ## -9.273 -2.355 -1.093  0.621 33.031 
+    ## -9.541 -2.385 -1.026  0.634 32.736 
     ## 
     ## Coefficients:
     ##             Estimate Std. Error t value Pr(>|t|)    
-    ## (Intercept) -8.82604    1.06983   -8.25 2.27e-15 ***
-    ## now_cost     0.22761    0.01887   12.06  < 2e-16 ***
+    ## (Intercept) -9.01042    1.07797  -8.359 1.07e-15 ***
+    ## now_cost     0.23192    0.01904  12.177  < 2e-16 ***
     ## ---
     ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
     ## 
-    ## Residual standard error: 5.131 on 403 degrees of freedom
-    ## Multiple R-squared:  0.2652, Adjusted R-squared:  0.2634 
-    ## F-statistic: 145.4 on 1 and 403 DF,  p-value: < 2.2e-16
+    ## Residual standard error: 5.139 on 399 degrees of freedom
+    ## Multiple R-squared:  0.271,  Adjusted R-squared:  0.2691 
+    ## F-statistic: 148.3 on 1 and 399 DF,  p-value: < 2.2e-16
 
 Når det gjelder samvariasjon mellom popularitet og pris, ser vi at denne stort sett følger en lineær trend - jo høyere pris, jo høyere popularitet. Det er imidlertid flere spillere som ligger over (og under), noe som kan bety at de er bedre enn prisen tilsier, eller at fantasy-deltakerne overvurderer dem. Sagt på en anna måte: innafor hver priskategori er det stor variasjon i hvor populære de enkelte spillerne er, noe som ikke forklares av pris alene.
 
     ## `geom_smooth()` using method = 'loess'
 
-    ## Warning: Removed 268 rows containing non-finite values (stat_smooth).
+    ## Warning: Removed 265 rows containing non-finite values (stat_smooth).
 
-    ## Warning: Removed 268 rows containing missing values (geom_point).
+    ## Warning: Removed 265 rows containing missing values (geom_point).
 
 ![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-15-1.png)
 
     ## `geom_smooth()` using method = 'loess'
 
-    ## Warning: Removed 268 rows containing non-finite values (stat_smooth).
+    ## Warning: Removed 265 rows containing non-finite values (stat_smooth).
 
-    ## Warning: Removed 268 rows containing missing values (geom_point).
+    ## Warning: Removed 265 rows containing missing values (geom_point).
 
 ![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-15-2.png)
 
@@ -234,20 +234,20 @@ Når det gjelder samvariasjon mellom popularitet og pris, ser vi at denne stort 
     ## 
     ## Residuals:
     ##     Min      1Q  Median      3Q     Max 
-    ## -69.384 -17.890   3.467  20.715  50.620 
+    ## -69.771 -18.109   3.609  20.231  50.821 
     ## 
     ## Coefficients:
     ##                     Estimate Std. Error t value Pr(>|t|)    
-    ## (Intercept)          58.6806    10.2139   5.745 5.89e-08 ***
-    ## selected_by_percent   1.3309     0.3607   3.689 0.000326 ***
-    ## now_cost              0.1184     0.1693   0.699 0.485454    
+    ## (Intercept)          57.5412    10.3389   5.566 1.39e-07 ***
+    ## selected_by_percent   1.2635     0.3620   3.490 0.000656 ***
+    ## now_cost              0.1444     0.1720   0.839 0.402806    
     ## ---
     ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
     ## 
-    ## Residual standard error: 26.33 on 134 degrees of freedom
-    ##   (268 observations deleted due to missingness)
-    ## Multiple R-squared:  0.1388, Adjusted R-squared:  0.126 
-    ## F-statistic:  10.8 on 2 and 134 DF,  p-value: 4.479e-05
+    ## Residual standard error: 26.45 on 133 degrees of freedom
+    ##   (265 observations deleted due to missingness)
+    ## Multiple R-squared:  0.1346, Adjusted R-squared:  0.1216 
+    ## F-statistic: 10.34 on 2 and 133 DF,  p-value: 6.677e-05
 
 Det er også (i hovedsak) en positiv sammenheng mellom popularitet og beregna poeng for 2016, og mellom nåkostnad og beregna poeng: jo høyere pris og jo høyere popularitet, jo flere poeng ville spillerne ha sanka i 2016. (For de 137 spillerne vi har data på). Lineær regresjon viser at sammenhengen er sterkest med popularitetsindikatoren, og at ingen av variablene forklarer mye av variasjonen i poengsummen. Sagt på en anna måte: det er ikke sikkert poengsummen for 2016 har vært viktig for popularitet og prissetting for årets sesong.
 
@@ -319,22 +319,22 @@ Videre kan det også være verdt å se på om spillere på lag som vurderes som 
 
 | team\_navn |       mean|       sum|
 |:-----------|----------:|---------:|
-| RBK        |  0.2855610|  7.139026|
-| ODD        |  0.1947404|  5.063251|
-| BRA        |  0.1803592|  4.148261|
-| MOL        |  0.1773046|  4.787223|
-| SIF        |  0.1709519|  4.102846|
-| VIF        |  0.1553295|  4.504554|
-| LSK        |  0.1162885|  2.674636|
-| VIK        |  0.1069835|  2.353637|
-| SO8        |  0.1054598|  2.636496|
-| FKH        |  0.1049614|  2.624035|
-| AAFK       |  0.0919963|  2.391904|
-| TIL        |  0.0841094|  2.186844|
-| STB        |  0.0779839|  2.105566|
-| KBK        |  0.0741116|  2.001012|
-| SOG        |  0.0731567|  2.048387|
-| SAN        |  0.0552441|  1.215370|
+| RBK        |  0.3144917|  6.604325|
+| ODD        |  0.1948350|  5.065710|
+| BRA        |  0.1804160|  4.149569|
+| MOL        |  0.1776195|  4.795727|
+| SIF        |  0.1704558|  4.090938|
+| VIF        |  0.1557228|  4.515961|
+| LSK        |  0.1160941|  2.670164|
+| VIK        |  0.1058636|  2.329000|
+| SO8        |  0.1052671|  2.631677|
+| FKH        |  0.1042399|  2.605998|
+| AAFK       |  0.0912799|  2.373278|
+| TIL        |  0.0832104|  2.163470|
+| STB        |  0.0775971|  2.095122|
+| KBK        |  0.0736832|  1.989445|
+| SOG        |  0.0720928|  2.018600|
+| SAN        |  0.0541195|  1.190629|
 
 Jeg lar gjennomsnittet telle inn i totalindikatoren, og lar den telle 20 %. Kostnad og popularitet veier allerede 30 % hver, og (estimert) poengsum for 2016 veier 20 %.
 
@@ -354,7 +354,7 @@ x <- lp ("max", f.obj, f.con, f.dir, f.rhs, all.bin=TRUE)
 x
 ```
 
-    ## Success: the objective function is 7.317054
+    ## Success: the objective function is 7.077465
 
 ``` r
 kable(arrange(temp[which(x$solution==1),c(3,11,13,8,9,26,10,12,37)],posisjon,desc(verdi_teamjustert)))
@@ -362,21 +362,21 @@ kable(arrange(temp[which(x$solution==1),c(3,11,13,8,9,26,10,12,37)],posisjon,des
 
 |   id| navn                     | team\_navn |  now\_cost|  selected\_by\_percent|      Poeng| status | posisjon |  verdi\_teamjustert|
 |----:|:-------------------------|:-----------|----------:|----------------------:|----------:|:-------|:---------|-------------------:|
-|  169| André Hansen             | RBK        |         55|                   29.5|  107.00000| a      | Keeper   |           0.5821526|
-|  144| Sondre Rossbach          | ODD        |         55|                   25.4|  107.00000| a      | Keeper   |           0.4873651|
-|  146| Espen Ruud               | ODD        |         65|                   39.0|  151.00000| a      | Forsvar  |           0.6715122|
-|  299| Lars-Christopher Vilsvik | SIF        |         60|                   26.2|  125.00000| a      | Forsvar  |           0.5122624|
-|  298| Jonathan Parr            | SIF        |         60|                   19.7|  104.00000| a      | Forsvar  |           0.4411603|
-|   29| Amin Nouri               | BRA        |         55|                    6.8|  117.00000| a      | Forsvar  |           0.3700337|
-|   31| Ruben Kristiansen        | BRA        |         55|                    5.1|  110.00000| a      | Forsvar  |           0.3493437|
-|  184| Fredrik Midtsjø          | RBK        |         85|                   29.1|  107.00000| a      | Midtbane |           0.6854544|
-|  132| Sander Svendsen          | MOL        |         85|                   14.4|   90.00000| a      | Midtbane |           0.4701656|
-|  143| Etzaz Hussain            | MOL        |         60|                   21.9|   66.09091| a      | Midtbane |           0.3971104|
-|  154| Ardian Gashi             | ODD        |         45|                    8.5|   87.15385| a      | Midtbane |           0.3154746|
-|   41| Sivert Heltne Nilsen     | BRA        |         55|                    4.1|   88.00000| a      | Midtbane |           0.3123366|
-|  194| Nicklas Bendtner         | RBK        |        125|                   46.5|  107.00000| a      | Angrep   |           0.9388889|
-|  365| Mohammed Abdellaoue      | VIF        |         95|                   27.0|   69.00000| a      | Angrep   |           0.5432761|
-|  258| Fredrik Flo              | SOG        |         45|                    5.1|   98.00000| a      | Angrep   |           0.2405175|
+|  169| André Hansen             | RBK        |         55|                   29.7|  107.00000| a      | Keeper   |           0.5861408|
+|  144| Sondre Rossbach          | ODD        |         55|                   25.3|  107.00000| a      | Keeper   |           0.4651871|
+|  146| Espen Ruud               | ODD        |         65|                   38.8|  151.00000| a      | Forsvar  |           0.6502138|
+|  299| Lars-Christopher Vilsvik | SIF        |         60|                   26.2|  125.00000| a      | Forsvar  |           0.5014311|
+|  298| Jonathan Parr            | SIF        |         60|                   19.7|  104.00000| a      | Forsvar  |           0.4295948|
+|   29| Amin Nouri               | BRA        |         55|                    6.7|  117.00000| a      | Forsvar  |           0.3526969|
+|   31| Ruben Kristiansen        | BRA        |         55|                    5.0|  110.00000| a      | Forsvar  |           0.3318149|
+|  184| Fredrik Midtsjø          | RBK        |         85|                   29.6|  107.00000| a      | Midtbane |           0.6913667|
+|  132| Sander Svendsen          | MOL        |         85|                   14.7|   90.00000| a      | Midtbane |           0.4487115|
+|  143| Etzaz Hussain            | MOL        |         60|                   21.5|   66.09091| a      | Midtbane |           0.3719081|
+|   41| Sivert Heltne Nilsen     | BRA        |         55|                    4.2|   88.00000| a      | Midtbane |           0.2960077|
+|  154| Ardian Gashi             | ODD        |         45|                    8.4|   81.00000| a      | Midtbane |           0.2828410|
+|  194| Nicklas Bendtner         | RBK        |        125|                   45.8|  107.00000| a      | Angrep   |           0.9388889|
+|  365| Mohammed Abdellaoue      | VIF        |         95|                   27.8|   69.00000| a      | Angrep   |           0.5254672|
+|  258| Fredrik Flo              | SOG        |         45|                    5.0|   98.06667| a      | Angrep   |           0.2051946|
 
 ``` r
 temp$solution = x$solution
@@ -388,7 +388,7 @@ temp$solution = x$solution
 
 Jeg tar sjansen på å velge laget som er beregna ut i fra popularitet, pris, poeng og lag. Antakeligvis kunne jeg brukt *mye* mer tid på å se på følsomhet for normalisering og ulike løsninger, men siden jeg mangler noe å benchmarke dette mot - noen faktiske poeng - så må jeg bare prøve og se.
 
-Løsningen varierte noe over tid de nærmeste dagene mot fristen 1. april. Siden 30 % av dyktighetsindikatoren er popularitet, gir jo dette mening - mange melder antakeligvis ikke inn laget sitt før rett før fristen (når jeg først meldte inn laget mitt 29. mars var det ca. 36 000 spillere med, 31. mars var det ca. 42 500). Små endringer selv etter kort tid tyder på at løsninga ikke er veldig forskjellig fra løsning nr. 2.
+Løsningen varierte noe over tid de nærmeste dagene mot fristen 1. april. Siden 30 % av dyktighetsindikatoren er popularitet, gir jo dette mening - mange melder antakeligvis ikke inn laget sitt før rett før fristen (når jeg først meldte inn laget mitt 29. mars var det ca. 36 000 spillere med, 31. mars var det ca. 42 500 og 1. april ca. 58 000). Små endringer selv etter kort tid tyder på at løsninga ikke er veldig forskjellig fra løsning nr. 2.
 
 Det er også grunn til å lure på om jeg burde gjort noe mer for å balansere en første-ellever mot benken - er det virkelig verdt pengene å ha to keepere fra øverste prisklasse, når kun en av dem kan høste poeng om gangen?
 

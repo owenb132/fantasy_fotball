@@ -1,5 +1,5 @@
 ---
-title: "Eliteserien Fantasy Football med R"
+title: "Eliteserien Fantasy Football med R - lagutvelging"
 output: github_document
 html_notebook: default
 ---
@@ -7,6 +7,10 @@ html_notebook: default
 ```{r include=FALSE}
 #fjerner alt fra forrige gang
 rm(list = ls())
+
+#i tilfelle noen algoritmer bruker seed - noe jeg tror den gjør? - setter jeg det
+set.seed(1106)
+
 #laster inn biblioteker
 library(httr)
 library(jsonlite)
@@ -25,12 +29,12 @@ Målet med spillet er å maksimere antallet poeng, ved å velge spillerne som gi
 
 Første utfordring er å sette sammen et fornuftig lag. En må velge 15 spillere (fordelt på 2 keepere, 5 forsvarsspillere, 5 midtbanespillere og tre angrepsspillere), verdien kan ikke overstige 100 fantasimillioner (fantasillioner?), og en kan maks velge tre spillere fra et enkelt lag. Alt [i følge reglene](https://fantasy.vg.no/a/help).
 
-Det vil antakeligvis være strategiske valg involvert i hvilke deler av laget en prioriterer høyest - gir det flere poeng å ha en solid keeper og et solid forsvar, eller gode angrepsspillere? Er det bedre med et par dyre spillere og mange billige, eller at alle er omlag jevngode? Er det bedre med dyre enkeltspillere fra middelmådige lag eller middels spillere fra gode lag? Er et godt lag et lag som scorer mange mål eller slipper inn få (hvis den forskjellen gir mening i eliteserien)?
+Det vil antakeligvis være strategiske valg involvert i hvilke deler av laget en prioriterer høyest - gir det flere poeng å ha en solid keeper og et solid forsvar, eller gode angrepsspillere? Er det bedre med et par dyre spillere og mange billige, eller at alle er omlag jevngode (erfaringer fra [Premier League](http://pena.lt/y/2015/08/07/mathematically-optimising-fantasy-football-team-redux/) tyder på det siste)? Er det bedre med dyre enkeltspillere fra middelmådige lag eller middels spillere fra gode lag? Er et godt lag et lag som scorer mange mål eller slipper inn få (hvis den forskjellen gir mening i eliteserien)?
 
 Uansett - dette er et opimeringsproblem med diverse begresninger. Så hvis jeg kan finne datamateriale over alle spillere, deres fantasipengeverdi, posisjon, lagtilhørighet, popularitet og track record for 2016, bør det gå an å sette sammen noe som er ok - eller bedre enn rein gjetning, i hvert fall.
 
 ##Datagrunnlaget
-Heldigvis liger datagrunnlaget VG bruker tilgjengelig i json-format i et API (?), og kan hentes med GET. 
+Heldigvis liger datagrunnlaget VG bruker tilgjengelig i json-format i et API (?), og kan hentes med GET. API-endepunktene ser ut til å være de samme som i Fantasy Premier League, som bl.a. er lista ut av bobbymond på [GitHub](https://github.com/bobbymond/FantasyPremierLeagueAPI).
 
 Vil VG protestere på slik bruk av dataene? Dette er jo ikke dokumentert noe sted, så vidt jeg ser. Terms of Service omtaler at spillet ikke kan kopieres, men det står ingenting om datagrunnlaget. Siden hver skifting av hvilke spillere som vises utløser et nytt slikt kall, bør ikke et par kall fra denne algoritmen være feil. 
 
@@ -49,6 +53,9 @@ df = fromJSON(content(spillerdata,"text"))
 #bruker Sys.Date, men usikker på hvor ofte dataene oppdateres.
 df$dato = Sys.Date()
 write.csv2(df,paste0("data/spillerdata_",Sys.Date(),".csv"),row.names=F)
+
+#fra og med 2. april må jeg bruke lagra data her for å reprodusere opprinnelig resultat.
+df = read.csv2("data/spillerdata_2017-04-01.csv",stringsAsFactors = FALSE)
 ```
 Hver enkelt spillers kampoppsett ligger også tilgjengelig, men ettersom henting av alle disse dataene kan  være litt mer krevende (og gi et litt flerdimensjonert datasett), så det lar jeg ligge inntil videre. 
 
@@ -386,14 +393,11 @@ Jeg lar gjennomsnittet telle inn i totalindikatoren, og lar den telle 20 %. Kost
 
 ## Utvelgelse av laget
 
-Heldigvis har Premier League Fantasy Football vært ei greie ganske lenge, slik at det ligger en del [pekere](https://llimllib.github.io/fantasypl/) [og andres forsøk] (http://pena.lt/y/2014/07/24/mathematically-optimising-fantasy-football-teams/) rundt. Analysen er basert på slike ting funnet på nettet.
+Heldigvis har Premier League Fantasy Football vært ei greie ganske lenge, slik at det ligger en del [pekere](https://llimllib.github.io/fantasypl/) [og andres forsøk](http://pena.lt/y/2014/07/24/mathematically-optimising-fantasy-football-teams/) rundt. Analysen er basert på slike ting funnet på nettet.
 
 For å løse dette, ser jeg på det som et lineært maksimeringsproblem med begrensninger - som kan løses med lpSolve-pakken.
 
 ```{r, include=FALSE}
-#i tilfelle algoritmen bruker seed - noe jeg tror den gjør? - setter jeg det
-set.seed(1106)
-
 #Setter først felles constraints mm
 # CONSTRAINTS:
 num_goalkeepers <- 2
@@ -480,7 +484,7 @@ qplot(as.factor(solution),verdi_teamjustert,data=temp,geom="boxplot")
 
 Jeg tar sjansen på å velge laget som er beregna ut i fra popularitet, pris, poeng og lag. Antakeligvis kunne jeg brukt _mye_ mer tid på å se på følsomhet for normalisering og ulike løsninger, men siden jeg mangler noe å benchmarke dette mot - noen faktiske poeng - så må jeg bare prøve og se.
 
-Løsningen varierte noe over tid de nærmeste dagene mot fristen 1. april. Siden 30 % av dyktighetsindikatoren er popularitet, gir jo dette mening - mange melder antakeligvis ikke inn laget sitt før rett før fristen (når jeg først meldte inn laget mitt 29. mars var det ca. 36 000 spillere med, 31. mars var det ca. 42 500). Små endringer selv etter kort tid tyder på at løsninga ikke er veldig forskjellig fra løsning nr. 2.
+Løsningen varierte noe over tid de nærmeste dagene mot fristen 1. april. Siden 30 % av dyktighetsindikatoren er popularitet, gir jo dette mening - mange melder antakeligvis ikke inn laget sitt før rett før fristen (når jeg først meldte inn laget mitt 29. mars var det ca. 36 000 spillere med, 31. mars var det ca. 42 500 og 1. april ca. 58 000). Små endringer selv etter kort tid tyder på at løsninga ikke er veldig forskjellig fra løsning nr. 2.
 
 Det er også grunn til å lure på om jeg burde gjort noe mer for å balansere en første-ellever mot benken - er det virkelig verdt pengene å ha to keepere fra øverste prisklasse, når kun en av dem kan høste poeng om gangen?
 
@@ -488,5 +492,5 @@ Det er også grunn til å lure på om jeg burde gjort noe mer for å balansere e
 lag_start = filter(temp,solution==1)
 data_start = temp
 write.csv2(lag_start,"data/startlag.csv",row.names=F)
-write.csv2(lag_start,"data/datagrunnlag_start.csv",row.names=F)
+write.csv2(data_start,"data/datagrunnlag_start.csv",row.names=F)
 ```

@@ -1,0 +1,185 @@
+---
+title: "Fantasy-eliteserie - modellevaluering"
+output: github_document
+html_notebook: default
+---
+
+Ok, 1. april gjorde jeg siste justeringer av [laget mitt](https://github.com/gardenberg/fantasy_fotball/blob/master/lagsammensetning.md). Nå er de første kampene spilt. 
+
+```{r,include=F}
+#fjerner alt fra forrige gang
+rm(list = ls())
+
+#i tilfelle noen algoritmer bruker seed - noe jeg tror den gjør? - setter jeg det
+set.seed(1106)
+#biblioteker
+library(dplyr)
+library(knitr)
+library(httr)
+library(jsonlite)
+library(ggplot2)
+library(tidyr)
+library(lpSolve)
+#laster inn data først
+data_start = read.csv2("data/datagrunnlag_start.csv",stringsAsFactors = FALSE)
+data_df = read.csv2("data/teamdata_2017-04-04.csv",stringsAsFactors = FALSE)
+```
+
+Hva var laget mitt igjen? Jo:
+
+```{r}
+kable(arrange(select(filter(data_start,solution==1),id,navn,posisjon,team_navn,verdi_teamjustert),posisjon,desc(verdi_teamjustert)),caption="Første 15 spillere")
+
+```
+
+Dataene med poengsummene til de nå ca. 61 000 lagene ser ut til å være tilgjengelig. Til nå har jeg bare klart å få dem ut 50 av gangen - dvs. at en frekk loop spør 1200 ganger, over 1.5 time for å unngå at VG får DDOs-følelse. 
+
+Her ser vi at med 34 poeng ligger jeg på 48 416 plass. Det er mange delte plasseringer, men det er altså noen tusen lagkonfigurasjoner som er bedre.
+
+```{r,include=FALSE}
+#spilleres lag fra totallista
+#utforsking tyder på at det 1169 sider med lag - 58 450 lag, hvis hver side har 50
+#med Sys.sleep på 5 gir dette 1.5 timers arbeid. kommenterer derfor ut dette
+# scrape the data - http://pena.lt/y/2014/07/24/mathematically-optimising-fantasy-football-teams/
+#data_df =data.frame()
+#for(i in 1:1170){
+        # Scrape responsibly kids, we don't want to ddos
+        #Sys.sleep(5)
+        #data = GET(paste0("https://fantasy.vg.no/drf/leagues-classic-standings/319?phase=1&le-page=1&ls-page=",i))
+        #warn_for_status(data)
+        #data_content = fromJSON(content(data,"text"))
+        #data_df = bind_rows(data_df,data_content[[3]][[3]])
+#}
+#write.csv2(data_df,paste0("data/teamdata_",Sys.Date(),".csv"),row.names=F)
+
+kable(filter(data_df,player_name=="Eivind Hageberg"))
+```
+
+
+```{r,echo=F}
+#plotter poengtotal, med vline på min poengsum
+qplot(total,data=data_df)+
+        geom_vline(xintercept = filter(data_df,player_name=="Eivind Hageberg")$total)
+
+```
+
+Det trengs et par runder til før jeg vil begynne å se på måter å finne gode overganger på, men det kan være interessant å sette opp en kjapp vurdering av hvordan modellen for å finne det beste laget gjorde det. Verdi_teamjustert var min indikator for poeng. Er fordelinga av den lik fordelinga av totalpoengene så langt? Ved å normalisere totalpoengsummen på samme vis som verdi-indikatoren kan vi sammenlikne fordelingene.
+
+```{r, echo=F}
+spillerdata = GET("https://fantasy.vg.no/drf/elements/")
+warn_for_status(spillerdata)
+
+#konverterer innholdet fra json til data-frame
+df_spillerdata = fromJSON(content(spillerdata,"text"))
+
+#hekter på utvalgte nye data på data_start
+df = left_join(data_start,select(df_spillerdata,id,Etternavn = second_name,Totalpoeng = total_points),by="id")
+
+df = mutate(df, Totalpoeng_norm = (Totalpoeng - min(Totalpoeng, na.rm=TRUE))/ (max(Totalpoeng,na.rm=TRUE) -min(Totalpoeng, na.rm=TRUE)))
+
+#må få disse inn i samme graf
+ggplot(df) + 
+  geom_density(aes(verdi_teamjustert, colour = "verdi_teamjustert")) + 
+  geom_density(aes(Totalpoeng_norm, colour = "Totalpoeng_norm"))
+
+```
+
+Fordelinga er (etter første runde) ikke helt lik. Indikatoren heller mer mot høyre, mens totalpoengene er mye mer høyreskjev og har mange i den lave enden av fordelinga. Dette er kanskje naturlig - etter hvert vil enkelte formodentlig bevege seg mer mot høyre og høyere poengsummer.
+
+Er det sammenheng mellom verdien jeg predikerte for hver enkelt spiller og poengene de til nå har samla inn? Verdi-indikatoren var en lineær modell av fire variabler. Totalpoeng-indikatoren kan ikke sies å være korrelert med input-faktorene på samme måte. Indikatoren på lagstyrke ser til og med ut til å være negativt korrelert med poengene.
+
+```{r}
+modell_1 = lm(verdi_teamjustert~now_cost_norm+selected_norm+poeng_norm+verdi_meanteam_norm,data=df)
+summary(modell_1)
+modell_2 = lm(Totalpoeng_norm~now_cost_norm+selected_norm+poeng_norm+verdi_meanteam_norm,data=df)
+summary(modell_2)
+```
+
+
+
+
+```{r}
+qplot(verdi_teamjustert,Totalpoeng_norm,data=df,color=factor(solution),geom=c("point","smooth")) +
+        geom_abline(intercept = 0, slope = 1)
+```
+
+Det samme ser vi når vi plotter verdi-indikatoren mot totalpoengene. Dette ser, per 2. april, ikke spesielt lovende ut. Det er en viss positiv sammenheng, men ikke stor - og langt ifra en perfekt linje. I tråd med fordelinga vi så over, ser vi at de fleste har fått færre poeng enn jeg antok.
+
+Hvordan vurdere løsninga fra lp_solve opp mot andre løsninger? En måte ville vært å finne alle gyldige løsninger (alle gyldige kombinasjoner er kanskje et bedre navn på det - ikke bare de med høyest poengsum, men alle som oppfyller begrensningene), og sammenliknet disse på poeng. Enn så lenge har jeg ikke funnet en måte å liste ut alle gyldige kombinasjoner på, uten å kode masse - så det står vi over. I stedet ser vi på hva som nå ville vært det beste laget.
+
+```{r, include=F}
+#test = head(df)
+#en mulighet (hadley, selvsagt): https://rdrr.io/cran/tidyr/man/expand.html
+
+#og det vil uansett bli en ca. - ettersom jeg kun kan anslå for 11 spillere
+#test_2 = expand(df,navn_keeper1= navn[posisjon=="Keeper"],navn_keeper2=navn[posisjon=="Keeper"])
+#men her trenger jeg jo 1) pengeverdier og 2) poeng - må/kan disse joines inn etterpå?
+#test_2 = left_join(test_2,select(df,navn,Totalpoeng),by=c("navn_keeper1"="navn"))
+#det går altså fint - men begrensningen med at maks tre spillere kAN være fra samme lag er ikke hensyntatt. dette virker rett og slett pirkete.
+
+```
+
+```{r, include=FALSE}
+#Setter først felles constraints mm
+#https://github.com/gardenberg/penalty/blob/master/fantasy_football_optimiser/optimiser.R ser mer effektiv ut?
+# CONSTRAINTS:
+num_goalkeepers <- 2
+num_defenders <- 5
+num_midfielders <- 5
+num_strikers <- 3
+max_team_cost <- 1000
+# set "max_player_from_a_team <- 15" to ignore this constraint
+max_player_from_a_team <- 3 		
+
+# Create constraint vectors
+goalkeepers <- df_spillerdata$element_type==1
+goalkeepers[goalkeepers==T] <- 1
+goalkeepers[goalkeepers==F] <- 0
+
+defenders <- df_spillerdata$element_type==2
+defenders[defenders==T] <- 1
+defenders[defenders==F] <- 0
+
+midfielders <- df_spillerdata$element_type==3
+midfielders[midfielders==T] <- 1
+midfielders[midfielders==F] <- 0
+
+strikers <- df_spillerdata$element_type==4
+strikers[strikers==T] <- 1
+strikers[strikers==F] <- 0
+
+# constraint for max # players from a team
+clubs <- sort(unique(df_spillerdata$team))
+
+team_constraint_vector <- c()
+team_constraint_dir <- c()
+team_constraint_rhs <- c()
+
+for (i in 1:length(clubs)){
+        temp_2 <- df_spillerdata$team==as.character(clubs[i])
+        temp_2[temp_2==T] <- 1
+        temp_2[temp_2==F] <- 0
+        
+        team_constraint_vector <- c(team_constraint_vector, temp_2)
+        team_constraint_dir <- c(team_constraint_dir, "<=")
+        team_constraint_rhs <- c(team_constraint_rhs, max_player_from_a_team)
+}
+
+f.con <- matrix (c(goalkeepers, defenders, midfielders, strikers, df_spillerdata$now_cost, team_constraint_vector), nrow=(5+length(clubs)), byrow=TRUE)
+f.dir <- c("=", "=", "=", "=", "<=", team_constraint_dir)
+f.rhs <- c(num_goalkeepers, num_defenders, num_midfielders, num_strikers, max_team_cost, team_constraint_rhs)
+```
+
+```{r}
+# OBJECTIVE FUNCTION: popularitet, pris og lagstyrke
+# antar at det er dette som skal maksimeres (eller minimeres) - 
+f.obj <- df_spillerdata$total_points
+
+x <- lp ("max", f.obj, f.con, f.dir, f.rhs, all.bin=TRUE)
+x
+kable(arrange(df_spillerdata[which(x$solution==1),c(1,3,50,51,11,22,5,32)],element_type,desc(total_points)))
+df_spillerdata$solution = x$solution
+```
+
+## Oppsummert
+Etter første runde ser det ikke ut til at modellen traff videre bra. Det kan derfor bli behov for å gjøre justeringer utover sesongen.
