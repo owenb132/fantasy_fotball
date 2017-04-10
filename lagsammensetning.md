@@ -1,4 +1,4 @@
-Eliteserien Fantasy Football med R
+Eliteserien Fantasy Football med R - lagutvelging
 ================
 
 Hva gjør du når kjentfolk inviterer deg til Eliteserien Fantasy Football, når Solskjær var stor i Norge sist du interesserte deg for norsk ligafotball? Prøver å analysere deg fram til noe fornuftig, selvsagt.
@@ -7,18 +7,18 @@ Målet med spillet er å maksimere antallet poeng, ved å velge spillerne som gi
 
 Første utfordring er å sette sammen et fornuftig lag. En må velge 15 spillere (fordelt på 2 keepere, 5 forsvarsspillere, 5 midtbanespillere og tre angrepsspillere), verdien kan ikke overstige 100 fantasimillioner (fantasillioner?), og en kan maks velge tre spillere fra et enkelt lag. Alt [i følge reglene](https://fantasy.vg.no/a/help).
 
-Det vil antakeligvis være strategiske valg involvert i hvilke deler av laget en prioriterer høyest - gir det flere poeng å ha en solid keeper og et solid forsvar, eller gode angrepsspillere? Er det bedre med et par dyre spillere og mange billige, eller at alle er omlag jevngode? Er det bedre med dyre enkeltspillere fra middelmådige lag eller middels spillere fra gode lag? Er et godt lag et lag som scorer mange mål eller slipper inn få (hvis den forskjellen gir mening i eliteserien)?
+Det vil antakeligvis være strategiske valg involvert i hvilke deler av laget en prioriterer høyest - gir det flere poeng å ha en solid keeper og et solid forsvar, eller gode angrepsspillere? Er det bedre med et par dyre spillere og mange billige, eller at alle er omlag jevngode (erfaringer fra [Premier League](http://pena.lt/y/2015/08/07/mathematically-optimising-fantasy-football-team-redux/) tyder på det siste)? Er det bedre med dyre enkeltspillere fra middelmådige lag eller middels spillere fra gode lag? Er et godt lag et lag som scorer mange mål eller slipper inn få (hvis den forskjellen gir mening i eliteserien)?
 
 Uansett - dette er et opimeringsproblem med diverse begresninger. Så hvis jeg kan finne datamateriale over alle spillere, deres fantasipengeverdi, posisjon, lagtilhørighet, popularitet og track record for 2016, bør det gå an å sette sammen noe som er ok - eller bedre enn rein gjetning, i hvert fall.
 
 Datagrunnlaget
 --------------
 
-Heldigvis liger datagrunnlaget VG bruker tilgjengelig i json-format i et API (?), og kan hentes med GET.
+Heldigvis liger datagrunnlaget VG bruker tilgjengelig i json-format i et API (?), og kan hentes med GET. API-endepunktene ser ut til å være de samme som i Fantasy Premier League, som bl.a. er lista ut av bobbymond på [GitHub](https://github.com/bobbymond/FantasyPremierLeagueAPI).
 
 Vil VG protestere på slik bruk av dataene? Dette er jo ikke dokumentert noe sted, så vidt jeg ser. Terms of Service omtaler at spillet ikke kan kopieres, men det står ingenting om datagrunnlaget. Siden hver skifting av hvilke spillere som vises utløser et nytt slikt kall, bør ikke et par kall fra denne algoritmen være feil.
 
-Hver enkelt spillers kampoppsett ligger også tilgjengelig, men ettersom henting av alle disse dataene kan være litt mer krevende (og gi et litt flerdimensjonert datasett), så det lar jeg ligge inntil videre.
+Hver enkelt spillers kampoppsett ligger også tilgjengelig, men ettersom henting av alle disse dataene kan være litt mer krevende (og gi et litt flerdimensjonert datasett), så det lar jeg ligge inntil videre. (Jeg ser på deler av det i lagutviklinga [seinere](https://github.com/gardenberg/fantasy_fotball/blob/master/lagutvikling.md))
 
 Dette ga ved første nedlasting i mars et datasett på 400 observasjoner og 50 variabler. Dataene tyder på at en av spillerne er solgt ut av Norge, og derfor ikke lenger er tilgjengelig. Så dette er dermed hele settet av spillere.
 
@@ -81,7 +81,7 @@ glimpse(df)
     ## $ bonus                        <int> 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
     ## $ element_type                 <int> 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, ...
     ## $ team                         <int> 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
-    ## $ dato                         <date> 2017-04-01, 2017-04-01, 2017-04-...
+    ## $ dato                         <chr> "2017-04-01", "2017-04-01", "2017...
 
 Blant variablene ser følgende ut til å være relevante
 
@@ -159,23 +159,23 @@ Ettersom det bare er et subset av alle spillerne som har fått denne informasjon
 | ikke-vg-data         |       0.1622642|       0.3396226|        0.3320755|      0.1660377|
 | vg-data              |       0.0000000|       0.3161765|        0.4705882|      0.2132353|
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-9-1.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-8-1.png)
 
     ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-9-2.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-8-2.png)
 
 Utvalget ser ikke veldig representativt ut. Som vi ser her er fordelinga av spillere i datasettet fra Fpl\_star ganske annerledes fra hele datasettet: det er ingen keepere, om lag samme andel forsvarere, flere angripere og langt flere midtbanespillere. Spillerne er langt jevnere i verdi, noe som særlig gjelder midtbanespillerne - det er langt færre av de lavest prisede. Det er også langt færre av de minst valgte spillerne som har poengdata. Det er allikevel mer informasjon enn vi hadde uten - så får vi se hva vi gjør med det.
 
 ### Datautforsking av spillerne
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-11-1.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-10-1.png)
 
 Det tydeligste mønsteret herifra er at spennet i priser øker med offensiviteten (hvis det er et ord) til spillerne - spisser har større variasjon og koster mer enn midtbanespillere, midtbanespillere mer enn forsvarsspillere og forsvarsspillere mer enn keepere.
 
     ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-12-1.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-11-1.png)
 
 Et tilsvarende mønster ser ikke ut til å være i valgene av spillere - det ser ut til at det er flere forsvarsspillere og midtbanespillere som er valgt av færre, og noen valg av angrepsspiller som nesten alle har gjort.
 
@@ -183,13 +183,13 @@ Et tilsvarende mønster ser ikke ut til å være i valgene av spillere - det ser
 
     ## Warning: Removed 265 rows containing non-finite values (stat_bin).
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-13-1.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-12-1.png)
 
 Hvordan er poengene fordelt? Ganske jevnt og nesten klokkeforma, faktisk, særlig for Midtbanespillerne (som utgjør nesten halvparten av spillerne vi har informasjon om). Kanskje litt overraskende sett opp imot prisbildet over, så er det særlig forsvarsspillere som hanker inn flest poeng, fulgt av midtbane og angrep.
 
     ## Warning: Ignoring unknown parameters: method
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-14-1.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-13-1.png)
 
     ## 
     ## Call:
@@ -218,7 +218,7 @@ Når det gjelder samvariasjon mellom popularitet og pris, ser vi at denne stort 
 
     ## Warning: Removed 265 rows containing missing values (geom_point).
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-15-1.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-14-1.png)
 
     ## `geom_smooth()` using method = 'loess'
 
@@ -226,7 +226,7 @@ Når det gjelder samvariasjon mellom popularitet og pris, ser vi at denne stort 
 
     ## Warning: Removed 265 rows containing missing values (geom_point).
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-15-2.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-14-2.png)
 
     ## 
     ## Call:
@@ -271,7 +271,7 @@ Siden antallet spillere på hver posisjon er satt, skulle en kanskje mene at det
 
     ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-16-1.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-15-1.png)
 
 ### Poeng fra 2016
 
@@ -279,19 +279,31 @@ Nå gjelder det og også bake inn poengene fra 2016. Hva gjør vi spillerne uten
 
 Siden jeg delvis gjør dette for å teste ut div. estimeringsteknikker bruker jeg et decision tree. Ikke egentlig en god grunn for å bruke en metode - men.
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-17-1.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-16-1.png)
 
 Det et slikt decision tree gjør er å dele dataene inn på en (matematisk) optimal måte. Første inndeling gjøres ved å skille mellom de som har en verdi lavere enn 0.03, og de som har høyere, og så videre.
 
     ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-18-1.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-17-1.png)
 
     ## `geom_smooth()` using method = 'loess'
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-18-2.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-17-2.png)
 
 Dette ser litt pussig ut, men ok. Vi slenger det inn i verdi-indikatoren.
+
+    ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-18-1.png)
+
+    ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-18-2.png)
+
+### Lagstyrke
+
+Videre kan det også være verdt å se på om spillere på lag som vurderes som sterkere bør få ekstra poeng. Vi ser i hvert fall at det er forskjell på kostnadsfordeling og popularitet blant lagene. For å få det enda tydeligere fram beregner jeg en sum og et gjennomsnitt av indikatoren vi til nå har beregna.
 
     ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
@@ -301,21 +313,9 @@ Dette ser litt pussig ut, men ok. Vi slenger det inn i verdi-indikatoren.
 
 ![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-19-2.png)
 
-### Lagstyrke
-
-Videre kan det også være verdt å se på om spillere på lag som vurderes som sterkere bør få ekstra poeng. Vi ser i hvert fall at det er forskjell på kostnadsfordeling og popularitet blant lagene. For å få det enda tydeligere fram beregner jeg en sum og et gjennomsnitt av indikatoren vi til nå har beregna.
-
     ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-20-1.png)
-
-    ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
-
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-20-2.png)
-
-    ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
-
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-20-3.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-19-3.png)
 
 | team\_navn |       mean|       sum|
 |:-----------|----------:|---------:|
@@ -341,7 +341,7 @@ Jeg lar gjennomsnittet telle inn i totalindikatoren, og lar den telle 20 %. Kost
 Utvelgelse av laget
 -------------------
 
-Heldigvis har Premier League Fantasy Football vært ei greie ganske lenge, slik at det ligger en del [pekere](https://llimllib.github.io/fantasypl/) \[og andres forsøk\] (<http://pena.lt/y/2014/07/24/mathematically-optimising-fantasy-football-teams/>) rundt. Analysen er basert på slike ting funnet på nettet.
+Heldigvis har Premier League Fantasy Football vært ei greie ganske lenge, slik at det ligger en del [pekere](https://llimllib.github.io/fantasypl/) [og andres forsøk](http://pena.lt/y/2014/07/24/mathematically-optimising-fantasy-football-teams/) rundt. Analysen er basert på slike ting funnet på nettet.
 
 For å løse dette, ser jeg på det som et lineært maksimeringsproblem med begrensninger - som kan løses med lpSolve-pakken.
 
@@ -384,7 +384,7 @@ temp$solution = x$solution
 
 ### Vurdering
 
-![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-25-1.png)![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-25-2.png)![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-25-3.png)
+![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-24-1.png)![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-24-2.png)![](lagsammensetning_files/figure-markdown_github/unnamed-chunk-24-3.png)
 
 Jeg tar sjansen på å velge laget som er beregna ut i fra popularitet, pris, poeng og lag. Antakeligvis kunne jeg brukt *mye* mer tid på å se på følsomhet for normalisering og ulike løsninger, men siden jeg mangler noe å benchmarke dette mot - noen faktiske poeng - så må jeg bare prøve og se.
 
@@ -395,6 +395,7 @@ Det er også grunn til å lure på om jeg burde gjort noe mer for å balansere e
 ``` r
 lag_start = filter(temp,solution==1)
 data_start = temp
-write.csv2(lag_start,"data/startlag.csv",row.names=F)
-write.csv2(lag_start,"data/datagrunnlag_start.csv",row.names=F)
+#brukte disse først, men kommenterte de ut i etterkant.
+#write.csv2(lag_start,"data/startlag.csv",row.names=F)
+#write.csv2(data_start,"data/datagrunnlag_start.csv",row.names=F)
 ```

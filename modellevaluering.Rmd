@@ -4,7 +4,7 @@ output: github_document
 html_notebook: default
 ---
 
-Ok, 1. april gjorde jeg siste justeringer av [laget mitt](https://github.com/gardenberg/fantasy_fotball/blob/master/lagsammensetning.md). Nå er de første kampene spilt. 
+Ok, 1. april gjorde jeg siste justeringer av [laget mitt](https://github.com/gardenberg/fantasy_fotball/blob/master/lagsammensetning.md). Nå er de to første rundene spilt. 
 
 ```{r,include=F}
 #fjerner alt fra forrige gang
@@ -20,9 +20,12 @@ library(jsonlite)
 library(ggplot2)
 library(tidyr)
 library(lpSolve)
+#scripts
+source("scripts/datagrabbing_function.R")
 #laster inn data først
 data_start = read.csv2("data/datagrunnlag_start.csv",stringsAsFactors = FALSE)
-data_df = read.csv2("data/teamdata_2017-04-04.csv",stringsAsFactors = FALSE)
+data_team = read.csv2("data/teamdata_2017-04-04.csv",stringsAsFactors = FALSE)
+df_spillerdata = read.csv2("data/spillerdata_2017-04-08.csv",stringsAsFactors = FALSE)
 ```
 
 Hva var laget mitt igjen? Jo:
@@ -34,7 +37,7 @@ kable(arrange(select(filter(data_start,solution==1),id,navn,posisjon,team_navn,v
 
 Dataene med poengsummene til de nå ca. 61 000 lagene ser ut til å være tilgjengelig. Til nå har jeg bare klart å få dem ut 50 av gangen - dvs. at en frekk loop spør 1200 ganger, over 1.5 time for å unngå at VG får DDOs-følelse. 
 
-Her ser vi at med 34 poeng ligger jeg på 48 416 plass. Det er mange delte plasseringer, men det er altså noen tusen lagkonfigurasjoner som er bedre.
+Her ser vi at med 34 poeng lå jeg på 48 416 plass etter første runde. Det er mange delte plasseringer, men det er altså noen tusen lagkonfigurasjoner som er bedre.
 
 ```{r,include=FALSE}
 #spilleres lag fra totallista
@@ -52,25 +55,22 @@ Her ser vi at med 34 poeng ligger jeg på 48 416 plass. Det er mange delte plass
 #}
 #write.csv2(data_df,paste0("data/teamdata_",Sys.Date(),".csv"),row.names=F)
 
-kable(filter(data_df,player_name=="Eivind Hageberg"))
+kable(filter(data_team,player_name=="Eivind Hageberg"))
 ```
 
 
 ```{r,echo=F}
 #plotter poengtotal, med vline på min poengsum
-qplot(total,data=data_df)+
-        geom_vline(xintercept = filter(data_df,player_name=="Eivind Hageberg")$total)
+qplot(total,data=data_team)+
+        geom_vline(xintercept = filter(data_team,player_name=="Eivind Hageberg")$total)
 
 ```
 
 Det trengs et par runder til før jeg vil begynne å se på måter å finne gode overganger på, men det kan være interessant å sette opp en kjapp vurdering av hvordan modellen for å finne det beste laget gjorde det. Verdi_teamjustert var min indikator for poeng. Er fordelinga av den lik fordelinga av totalpoengene så langt? Ved å normalisere totalpoengsummen på samme vis som verdi-indikatoren kan vi sammenlikne fordelingene.
 
 ```{r, echo=F}
-spillerdata = GET("https://fantasy.vg.no/drf/elements/")
-warn_for_status(spillerdata)
-
-#konverterer innholdet fra json til data-frame
-df_spillerdata = fromJSON(content(spillerdata,"text"))
+#kommenterer denne ut og laster inn data øverst i stedet
+#df_spillerdata = datagrabber()
 
 #hekter på utvalgte nye data på data_start
 df = left_join(data_start,select(df_spillerdata,id,Etternavn = second_name,Totalpoeng = total_points),by="id")
@@ -82,9 +82,11 @@ ggplot(df) +
   geom_density(aes(verdi_teamjustert, colour = "verdi_teamjustert")) + 
   geom_density(aes(Totalpoeng_norm, colour = "Totalpoeng_norm"))
 
+#her kunne jeg heller ha laget en rad per runde eller lignende. 
+
 ```
 
-Fordelinga er (etter første runde) ikke helt lik. Indikatoren heller mer mot høyre, mens totalpoengene er mye mer høyreskjev og har mange i den lave enden av fordelinga. Dette er kanskje naturlig - etter hvert vil enkelte formodentlig bevege seg mer mot høyre og høyere poengsummer.
+Fordelinga var (etter første runde) ikke helt lik. Indikatoren heller mer mot høyre, mens totalpoengene er mye mer høyreskjev og har mange i den lave enden av fordelinga. Dette er kanskje naturlig - etter hvert vil enkelte formodentlig bevege seg mer mot høyre og høyere poengsummer. Den trenden blir synlig allerede etter andre runde - totalpoengene begynner å bevege seg mot høyre.
 
 Er det sammenheng mellom verdien jeg predikerte for hver enkelt spiller og poengene de til nå har samla inn? Verdi-indikatoren var en lineær modell av fire variabler. Totalpoeng-indikatoren kan ikke sies å være korrelert med input-faktorene på samme måte. Indikatoren på lagstyrke ser til og med ut til å være negativt korrelert med poengene.
 
@@ -103,7 +105,7 @@ qplot(verdi_teamjustert,Totalpoeng_norm,data=df,color=factor(solution),geom=c("p
         geom_abline(intercept = 0, slope = 1)
 ```
 
-Det samme ser vi når vi plotter verdi-indikatoren mot totalpoengene. Dette ser, per 2. april, ikke spesielt lovende ut. Det er en viss positiv sammenheng, men ikke stor - og langt ifra en perfekt linje. I tråd med fordelinga vi så over, ser vi at de fleste har fått færre poeng enn jeg antok.
+Det samme ser vi når vi plotter verdi-indikatoren mot totalpoengene. Dette så, per 2. april, ikke spesielt lovende ut. Det er en viss positiv sammenheng, men ikke stor - og langt ifra en perfekt linje. I tråd med fordelinga vi så over, ser vi at de fleste har fått færre poeng enn jeg antok. Etter andre runde retter imidlertid linja for alle spillerne seg opp - og særlig kostnad og popularitet henger bedre sammen med poengsummen. Dette gjelder imidlertid mindre for spillerne jeg valgte ut.
 
 Hvordan vurdere løsninga fra lp_solve opp mot andre løsninger? En måte ville vært å finne alle gyldige løsninger (alle gyldige kombinasjoner er kanskje et bedre navn på det - ikke bare de med høyest poengsum, men alle som oppfyller begrensningene), og sammenliknet disse på poeng. Enn så lenge har jeg ikke funnet en måte å liste ut alle gyldige kombinasjoner på, uten å kode masse - så det står vi over. I stedet ser vi på hva som nå ville vært det beste laget.
 

@@ -38,26 +38,25 @@ Heldigvis liger datagrunnlaget VG bruker tilgjengelig i json-format i et API (?)
 
 Vil VG protestere på slik bruk av dataene? Dette er jo ikke dokumentert noe sted, så vidt jeg ser. Terms of Service omtaler at spillet ikke kan kopieres, men det står ingenting om datagrunnlaget. Siden hver skifting av hvilke spillere som vises utløser et nytt slikt kall, bør ikke et par kall fra denne algoritmen være feil. 
 
-```{r, echo=F}
+```{r, include=F}
 #dette ser ut til å hente ut informasjon om  spillere
-spillerdata = GET("https://fantasy.vg.no/drf/elements/")
-warn_for_status(spillerdata)
-```
+#spillerdata = GET("https://fantasy.vg.no/drf/elements/")
+#warn_for_status(spillerdata)
 
-```{r,include=F}
 #konverterer innholdet fra json til data-frame
-df = fromJSON(content(spillerdata,"text"))
+#df = fromJSON(content(spillerdata,"text"))
 #df = fromJSON(parsed)
 
 #lagrer en lokal kopi av dataene
 #bruker Sys.Date, men usikker på hvor ofte dataene oppdateres.
-df$dato = Sys.Date()
-write.csv2(df,paste0("data/spillerdata_",Sys.Date(),".csv"),row.names=F)
+#df$dato = Sys.Date()
+#write.csv2(df,paste0("data/spillerdata_",Sys.Date(),".csv"),row.names=F)
 
 #fra og med 2. april må jeg bruke lagra data her for å reprodusere opprinnelig resultat.
 df = read.csv2("data/spillerdata_2017-04-01.csv",stringsAsFactors = FALSE)
 ```
-Hver enkelt spillers kampoppsett ligger også tilgjengelig, men ettersom henting av alle disse dataene kan  være litt mer krevende (og gi et litt flerdimensjonert datasett), så det lar jeg ligge inntil videre. 
+
+Hver enkelt spillers kampoppsett ligger også tilgjengelig, men ettersom henting av alle disse dataene kan  være litt mer krevende (og gi et litt flerdimensjonert datasett), så det lar jeg ligge inntil videre. (Jeg ser på deler av det i lagutviklinga [seinere](https://github.com/gardenberg/fantasy_fotball/blob/master/lagutvikling.md))
 
 ```{r, include=F}
 #dette ser ut til å hente ut et enkelt elements kampoppsett
@@ -491,6 +490,7 @@ Det er også grunn til å lure på om jeg burde gjort noe mer for å balansere e
 ```{r}
 lag_start = filter(temp,solution==1)
 data_start = temp
-write.csv2(lag_start,"data/startlag.csv",row.names=F)
-write.csv2(data_start,"data/datagrunnlag_start.csv",row.names=F)
+#brukte disse først, men kommenterte de ut i etterkant.
+#write.csv2(lag_start,"data/startlag.csv",row.names=F)
+#write.csv2(data_start,"data/datagrunnlag_start.csv",row.names=F)
 ```

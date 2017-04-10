@@ -1,0 +1,166 @@
+---
+title: "R Notebook"
+output: github_document
+html_notebook: default
+---
+## Mellom runde 2 og 3
+```{r,include=F}
+#fjerner alt fra forrige gang
+rm(list = ls())
+
+#i tilfelle noen algoritmer bruker seed - noe jeg tror den gjør? - setter jeg det
+set.seed(1106)
+
+#biblioteker
+library(dplyr)
+library(knitr)
+library(httr)
+library(jsonlite)
+library(ggplot2)
+library(tidyr)
+library(lpSolve)
+library(readr)
+#scripts
+source("scripts/datagrabbing_function.R")
+source("scripts/teamchooser_function.R")
+
+#laster inn startdata først - her er utgangspunktet
+data_start = read.csv2("data/datagrunnlag_start.csv",stringsAsFactors = FALSE)
+
+#og her er spillerlag med poengsummer - hentes en gang for enkelhetsskyld
+df_lag = read.csv2("data/teamdata_2017-04-07.csv",stringsAsFactors = FALSE)
+
+#nye data
+#df_spillerdata = datagrabber()
+df_spillerdata = read.csv2("data/spillerdata_2017-04-08.csv",stringsAsFactors = FALSE)
+
+#hekter på utvalgte gamle data fra data_start
+df = left_join(df_spillerdata,select(data_start,id,first_team = solution),by="id")
+
+#siden de lagra dataene ikke har omkodinga, må den skje her
+df$selected_by_percent = parse_number(df$selected_by_percent)
+df$navn = paste(df$first_name,df$second_name)
+df$posisjon = df$element_type
+df$posisjon = factor(df$element_type,labels=c("Keeper","Forsvar","Midtbane","Angrep"))
+df$team_navn = df$team
+df$team_navn = factor(df$team,labels=c("AAFK","BRA","FKH","KBK","LSK","MOL","ODD","RBK","SAN","SO8","SOG","STB","SIF","TIL","VIF","VIK"))
+
+#sjekker at posisjoner og lag ser riktig ut
+table(levels(as.factor(df$posisjon)),levels(as.factor(df$element_type)))
+table(levels(as.factor(df$team)),levels(as.factor(df$team_navn)))
+
+#leser også inn spillere-poeng kamp
+df_spillerdata = read.csv2("data/spillere_poeng_2017-04-08.csv",stringsAsFactors = FALSE)
+```
+### Lagstatus
+
+```{r}
+#spilleres lag fra totallista
+#df_lag = datagrabber("lag")
+summary(df_lag$total)
+kable(filter(df_lag,player_name=="Eivind Hageberg"))
+
+#plotter poengtotal, med vline på min poengsum
+qplot(total,data=df_lag)+
+        geom_vline(xintercept = filter(df_lag,player_name=="Eivind Hageberg")$total)
+
+```
+
+Etter første runde lå jeg med 34 poeng et godt stykke ned. Med 54 poeng i andre runde klatra jeg opp til ca. midt i feltet.
+
+```{r}
+kable(arrange(select(filter(df,first_team==1),id,navn,posisjon,team_navn,total_points,status,news,chance_of_playing_this_round,chance_of_playing_next_round,in_dreamteam),posisjon,desc(total_points)),caption="Første 15 spillere")
+```
+
+Her ser det ut til at noe har skjedd med Moa. Må passe på at han blir bytta ut med Flo. Flo fikk 0 poeng i de to første rundene - burde han heller byttes mot Kristiansen, for å gi en 5-4-1-formasjon? I utgangspunktet var jeg usikker, men så såg jeg at Flo ble autobytta av systemet - heldigvis. Gashi var også en av to spillere som ikke høsta poeng i første runde, og vi bytter han derfor ut med Heltne Nilsen - som i hvert fall skaffa to poeng.
+
+Poengoversikten gir en kumulativ oversikt og noe om sist spilte kamp. Det er kan være nyttig å få informasjon om hver enkelt spilte kamp, slik at jeg lettere ser utviklinga over tid.
+
+```{r}
+#df_spillerdata = datagrabber("spillere_poeng_kamp")
+#test = full_join(df,df_spillerdata,by=c("id"="id_player"))
+
+#I tillegg til det over: plotte poeng og pris for alle spillere og laget
+#utfordring: plotte mine poeng (som inkl. kaptein og benk) eller poeng totalt?
+#første omgang: poeng totalt
+qplot(round,total_points,data=df_spillerdata[df_spillerdata$id_player %in% filter(df,first_team==1)$id,],facets=~id_player,geom="line")
+```
+
+Med to spillere som ikke produserer poeng og en skada er det på tide å gjøre noen bytter på spillermarkedet. I tillegg ser jeg at totalverdien på laget mitt er på veg nedover - i første omgang fra 100 millioner til 99.9 millioner, men allikevel.
+
+### Lagforbedring
+Det store spørsmålet er nå om og i så fall hvordan laget kan forbedres. Med 34 poeng og en plassering godt ned på [lista](https://github.com/gardenberg/fantasy_fotball/blob/master/modellevaluering.md), er det på en måte en trøst at selv topplasseringa med 97 poeng er noe unna maksimal mulig verdi på 145 poeng.
+
+```{r}
+optimized_team = teamchooser(df) 
+#returnerer ei liste med tre df: lp-objektet, df som passes og laget - bruk [[1]]
+optimized_team[[1]]
+df = optimized_team[[2]]
+kable(select(optimized_team[[3]],id,navn,posisjon,team_navn,now_cost,selected_by_percent,total_points))
+```
+
+I utgangspunktet tenker jeg at det er for tidlig å kaste alt ut av vinduet. Med kun 1 kamp spilt for alle lagene, virker det vågalt å skulle prøve å bytte ut førstelaget mot dette laget - særlig tatt i betraktning av at en kun får ett bytte uten å motta fire minuspoeng. 
+
+En mulighet hadde vært å bytte ut en av spillerne i mitt lag mot en av spillerne fra det beste laget. Hvis det skulle vært spillere fra "optimal-laget" burde det vært en av følgende
+
+```{r, include=F}
+#faktorkoder litt for å ha noe å farge etter
+df$utvalgte = "ikke valgt"
+df$utvalgte[df$solution_full==1] = "best nå"
+df$utvalgte[df$first_team==1] = "førstelag"
+df$utvalgte[df$first_team==1&df$solution_full==1] = "begge"
+df$utvalgte = factor(df$utvalgte)
+levels(df$utvalgte)
+```
+
+```{r}
+qplot(now_cost,total_points,data=df,geom="jitter",color=utvalgte,facets=element_type~.)
+
+qplot(now_cost,total_points,data=df,geom="jitter",color=utvalgte,facets=utvalgte~element_type+.)
+
+```
+
+```{r}
+#hvis målet er å holde seg innafor priskategorier trenger jeg ikke alle priskategorier, kun de på first_team.
+test = filter(df,solution_full==1)
+test = test[test$now_cost %in% levels(as.factor(df$now_cost[df$first_team==1])),]
+
+#prøver å sette opp en interaksjon som også direkte gir spillerne disse over kan byttes mot
+test_2 = filter(df,first_team==1) 
+test_2 = test_2[interaction(test_2$now_cost,test_2$posisjon) %in% interaction(test$now_cost,test$posisjon),]
+
+#lager en tabell og printer den
+test_3 = bind_rows(select(test,id,navn,utvalgte,posisjon,team_navn,now_cost,selected_by_percent,status,total_points),select(test_2,id,navn,utvalgte,posisjon,team_navn,now_cost,selected_by_percent,status,total_points))
+
+kable(arrange(test_3,posisjon,desc(total_points)))
+```
+
+```{r}
+#hvis å velge et helt lag med div constraints er et lp-problem, bør det også la seg gjøre å formulere hva som vil være det beste byttet som et lp-problem? hvis det nye laget må ha 10 eller 9 spillere som var på first_team?
+
+#tilleggsproblem i så fall: prisen på de nye spillerne må være lik pengene jeg har. men det er ikke noe problem, for totalverdi-constraintent gjelder fortsatt.
+
+# et større tilleggsproblem: er tidligere performance en god indikator på future performance? bør ha litt utforsking og prediksjonsforsøk etter hvert.
+
+optimized_team = teamchooser(df,incremental=TRUE)
+#returnerer ei liste med tre df: lp-objektet, df som passes og laget - bruk [[1]]
+optimized_team[[1]]
+df = optimized_team[[2]]
+
+#beste lag og første lag
+kable(select(filter(df,((first_team==1&solution_incremental==1)|(first_team==1&solution_incremental==0)|(first_team==0&solution_incremental==1))),id,navn,posisjon,team_navn,now_cost,selected_by_percent,total_points,solution_incremental,first_team))
+
+```
+
+Algoritmen foreslår altså å selge Vilsvik og Abdellaoue, og kjøpe Rosted og Shuaibu. Det gjør jeg.
+
+```{r}
+#i mange på¨en måte å hente ut laget mitt på lagrer jeg det hre
+
+#bør først sette solution_incremental til now_team/sencond_team/team_2
+
+#write.csv2(df,paste0("data/endra_lag_",Sys.Date(),".csv"),row.names=F)
+```
+
+
+En annen mulighet vil være å beholde deler av den opprinnelige modellen for å bedre predikere utviklinga til spillerne. Siden den modellen ikke gjorde det kjempeskarpt i første runde, tenker jeg at dette kan vente til jeg får inn mer data. Dessuten er jeg tom for tid til dette nå.
