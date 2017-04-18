@@ -14,10 +14,8 @@ datagrabber = function(x = "spillere"){
                 temp_json = GET("https://fantasy.vg.no/drf/elements/")
                 stop_for_status(temp_json)
                 df = fromJSON(content(temp_json,"text",encoding="UTF-8"))
-                #lagrer en lokal kopi av dataene
                 #bruker Sys.Date, men usikker på hvor ofte dataene oppdateres.
                 df$dato = Sys.Date()
-                write.csv2(df,paste0("data/spillerdata_",Sys.Date(),".csv"),row.names=F)
                 #fikser noen enkle omkodinger - bør sjekkes for konsistens?
                 #konverterer tall
                 df$selected_by_percent = parse_number(df$selected_by_percent)
@@ -29,6 +27,8 @@ datagrabber = function(x = "spillere"){
                 #Koder om lagkode til lagnavn
                 df$team_navn = df$team
                 df$team_navn = factor(df$team,labels=c("AAFK","BRA","FKH","KBK","LSK","MOL","ODD","RBK","SAN","SO8","SOG","STB","SIF","TIL","VIF","VIK"))
+                #lagrer en lokal kopi av dataene
+                write.csv2(df,paste0("data/spillerdata_",Sys.Date(),".csv"),row.names=F)
                 #returnerer df
                 return(df)
         }
@@ -64,12 +64,12 @@ datagrabber = function(x = "spillere"){
         }
         if(x=="lag"){
                 #spilleres lag fra totallista
-                #utforsking tyder på at det er 1285 sider med lag - 64 250 lag, hvis hver side har 50
-                #med Sys.sleep på 4 gir dette 1.5 timers arbeid.
+                #utforsking tyder på at det er 1319 sider med lag - 64 250 lag, hvis hver side har 50
+                #med Sys.sleep på 4 gir dette rundt 1.5 timers arbeid.
                 #bør nesten legge inn en "er du sikker på at du har tid?"
                 # scrape the data - http://pena.lt/y/2014/07/24/mathematically-optimising-fantasy-football-teams/
                 data_df =data.frame()
-                for(i in 1:1285){
+                for(i in 1:1319){
                         # Scrape responsibly kids, we don't want to ddos
                         Sys.sleep(4)
                         data = GET(paste0("https://fantasy.vg.no/drf/leagues-classic-standings/319?phase=1&le-page=1&ls-page=",i))

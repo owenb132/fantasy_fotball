@@ -1,7 +1,7 @@
 #R code for Fantasy Football (soccer) 
 #forked https://gist.github.com/gardenberg/e90ad05bc53754483c71baa6ee6c13c7
 
-teamchooser = function(temp,incremental=FALSE){
+teamchooser = function(temp,incremental=FALSE, num_nowteamers=14){
         library(lpSolve)
         library(dplyr)
         if(incremental==FALSE){
@@ -68,7 +68,7 @@ teamchooser = function(temp,incremental=FALSE){
                 num_defenders <- 5
                 num_midfielders <- 5
                 num_strikers <- 3
-                num_firstteamers = 13
+                num_nowteamers = num_nowteamers
                 max_team_cost <- 1000
                 # set "max_player_from_a_team <- 15" to ignore this constraint
                 max_player_from_a_team <- 3 	
@@ -89,9 +89,9 @@ teamchooser = function(temp,incremental=FALSE){
                 strikers[strikers==T] <- 1
                 strikers[strikers==F] <- 0
                 
-                firstteamers <- temp$first_team ==1
-                firstteamers[firstteamers==T] <- 1
-                firstteamers[firstteamers==F] <- 0
+                nowteamers <- temp$team_now ==1
+                nowteamers[nowteamers==T] <- 1
+                nowteamers[nowteamers==F] <- 0
                 
                 # constraint for max # players from a team
                 clubs <- sort(unique(temp$team))
@@ -110,9 +110,9 @@ teamchooser = function(temp,incremental=FALSE){
                         team_constraint_rhs <- c(team_constraint_rhs, max_player_from_a_team)
                 }
                 
-                f.con <- matrix (c(goalkeepers, defenders, midfielders, strikers, firstteamers, temp$now_cost, team_constraint_vector), nrow=(6+length(clubs)), byrow=TRUE)
+                f.con <- matrix (c(goalkeepers, defenders, midfielders, strikers, nowteamers, temp$now_cost, team_constraint_vector), nrow=(6+length(clubs)), byrow=TRUE)
                 f.dir <- c("=", "=", "=", "=", "=", "<=", team_constraint_dir)
-                f.rhs <- c(num_goalkeepers, num_defenders, num_midfielders, num_strikers, num_firstteamers, max_team_cost, team_constraint_rhs)
+                f.rhs <- c(num_goalkeepers, num_defenders, num_midfielders, num_strikers, num_nowteamers, max_team_cost, team_constraint_rhs)
                 # OBJECTIVE FUNCTION
                 f.obj <- temp$total_points
                 x <- lp ("max", f.obj, f.con, f.dir, f.rhs, all.bin=TRUE)
