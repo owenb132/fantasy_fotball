@@ -1,7 +1,7 @@
 #R code for Fantasy Football (soccer) 
 #forked https://gist.github.com/gardenberg/e90ad05bc53754483c71baa6ee6c13c7
 
-teamchooser = function(temp,incremental=FALSE, num_nowteamers=14){
+teamchooser = function(temp,incremental=FALSE, num_nowteamers=14,max_team_cost=1000){
         library(lpSolve)
         library(dplyr)
         if(incremental==FALSE){
@@ -14,7 +14,7 @@ teamchooser = function(temp,incremental=FALSE, num_nowteamers=14){
                 num_defenders <- 5
                 num_midfielders <- 5
                 num_strikers <- 3
-                max_team_cost <- 1000
+                max_team_cost <- max_team_cost
                 # set "max_player_from_a_team <- 15" to ignore this constraint
                 max_player_from_a_team <- 3 	
                 # Create constraint vectors
@@ -69,7 +69,7 @@ teamchooser = function(temp,incremental=FALSE, num_nowteamers=14){
                 num_midfielders <- 5
                 num_strikers <- 3
                 num_nowteamers = num_nowteamers
-                max_team_cost <- 1000
+                max_team_cost <- max_team_cost
                 # set "max_player_from_a_team <- 15" to ignore this constraint
                 max_player_from_a_team <- 3 	
                 # Create constraint vectors

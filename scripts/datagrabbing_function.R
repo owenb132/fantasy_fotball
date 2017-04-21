@@ -33,8 +33,12 @@ datagrabber = function(x = "spillere"){
                 return(df)
         }
         if(x=="spillere_poeng_kamp"){
+                #sjekker først hvor mange spillere det er
+                temp_json = GET("https://fantasy.vg.no/drf/elements/")
+                stop_for_status(temp_json)
+                temp_df = fromJSON(content(temp_json,"text",encoding="UTF-8"))
                 data_df =data.frame()
-                for(i in 1:432){
+                for(i in as.vector(temp_df$id)){
                         Sys.sleep(4)
                         temp_json = GET(paste0("https://fantasy.vg.no/drf/element-summary/",i))
                         stop_for_status(temp_json)
@@ -50,38 +54,40 @@ datagrabber = function(x = "spillere"){
                 #bruker Sys.Date, men usikker på hvor ofte dataene oppdateres.
                 data_df$dato = Sys.Date()
                 write.csv2(data_df,paste0("data/spillere_poeng_",Sys.Date(),".csv"),row.names=F)
-                warning("Antar 432 elementer. Denne returnerer kun history, ikke framtidige fixtures eller summaries")
+                warning("Denne returnerer kun history, ikke framtidige fixtures eller summaries")
                 return(data_df)
         }
         if(x=="spillere_alle"){
                 temp_json = GET("https://fantasy.vg.no/drf/bootstrap-static")
                 stop_for_status(temp_json)
-                df = fromJSON(content(temp_json,"text",encoding="UTF-8"))
+                temp_df = fromJSON(content(temp_json,"text",encoding="UTF-8"))
                 #gir en liste på 7: 1 faser (events delt inn i mnd), 2 elements (alle spillere, samme som elements over), 3 game settings (div settings), 4 total players (antallet irl-spillere), 5 teams (info om lagene), 6 element types (posisjoner), 7 events (runder)
                 #kunne evt. brukt dette for å koble posisjoner og lagnavn - men jobben er jo allerede gjort over.
                 warning("Liste - må bearbeides")
-                return(df)                
+                return(temp_df)                
         }
         if(x=="lag"){
                 #spilleres lag fra totallista
-                #utforsking tyder på at det er 1319 sider med lag - 64 250 lag, hvis hver side har 50
-                #med Sys.sleep på 4 gir dette rundt 1.5 timers arbeid.
-                #bør nesten legge inn en "er du sikker på at du har tid?"
                 # scrape the data - http://pena.lt/y/2014/07/24/mathematically-optimising-fantasy-football-teams/
+                temp_json = GET("https://fantasy.vg.no/drf/bootstrap-static")
+                stop_for_status(temp_json)
+                temp_df = fromJSON(content(temp_json,"text",encoding="UTF-8"))
+                antall_spillersider = floor(temp_df[[4]]/50)
+                warning(paste0("Totalt ", temp_df[[4]]," lag. Skraping vil ta ca. ",ceiling((antall_spillersider*4)/60)," minutter"))
                 data_df =data.frame()
-                for(i in 1:1319){
-                        # Scrape responsibly kids, we don't want to ddos
+                for(i in 1:antall_spillersider){
+                        #Scrape responsibly kids, we don't want to ddos
                         Sys.sleep(4)
-                        data = GET(paste0("https://fantasy.vg.no/drf/leagues-classic-standings/319?phase=1&le-page=1&ls-page=",i))
-                        stop_for_status(data)
-                        data_content = fromJSON(content(data,"text",encoding="UTF-8"))
+                        temp_df = GET(paste0("https://fantasy.vg.no/drf/leagues-classic-standings/319?phase=1&le-page=1&ls-page=",i))
+                        stop_for_status(temp_df)
+                        data_content = fromJSON(content(temp_df,"text",encoding="UTF-8"))
                         data_df = bind_rows(data_df,data_content[[3]][[3]])
                 }
                 #lagrer en lokal kopi av dataene
                 #bruker Sys.Date, men usikker på hvor ofte dataene oppdateres.
                 data_df$dato = Sys.Date()
                 write.csv2(data_df,paste0("data/teamdata_",Sys.Date(),".csv"),row.names=F)
-                warning("Husk å sjekke antallet sider")
+                warning("Husk å sjekke antallet rader")
                 return(data_df)
         }
         warning("Nå skjedde det ingenting?")

@@ -1,0 +1,536 @@
+---
+title: "Lagutvikling og prediksjonsforsøk før runde 5"
+output: github_document
+html_notebook: default
+---
+```{r,include=F}
+#prepping
+
+#fjerner alt fra forrige gang
+rm(list = ls())
+
+#for algoritmer som bruker seed
+set.seed(1106)
+
+#biblioteker
+library(dplyr)
+library(knitr)
+library(httr)
+library(jsonlite)
+library(ggplot2)
+library(tidyr)
+library(lpSolve)
+library(readr)
+library(broom)
+library(forecast)
+#scripts
+source("scripts/datagrabbing_function.R")
+source("scripts/teamchooser_function.R")
+
+#laster inn data om nåværende lag
+data_start = read.csv2("data/endra_lag_2017-04-11.csv",stringsAsFactors = FALSE)
+
+#og her er spillerlag med poengsummer - hentes en gang for enkelhetsskyld
+#burde heller ha en if-file.exists her
+#df_lag = datagrabber("lag")
+#noen linjer for å binde sammen alle teamdataene til ei samla fil
+#df_lag = bind_rows(read.csv2("data/teamdata_samla_2017-04-11.csv",stringsAsFactors = FALSE),read.csv2("data/teamdata_2017-04-19.csv",stringsAsFactors = FALSE))
+#write.csv2(df_lag,paste0("data/teamdata_samla.csv"),row.names=F)
+df_lag = read.csv2("data/teamdata_samla.csv",stringsAsFactors = FALSE)
+
+#nye data
+df_spillerdata = datagrabber()
+#df_spillerdata = read.csv2("data/spillerdata_2017-04-11.csv",stringsAsFactors = FALSE)
+
+#hekter på utvalgte gamle data fra data_start
+df = left_join(df_spillerdata,select(data_start,id,team_1,team_2,team_3,team_now),by="id")
+df$team_past = 0
+df$team_past[df$team_1==1&df$team_now==0] = 1
+
+#sjekker at posisjoner og lag ser riktig ut
+table(levels(as.factor(df$posisjon)),levels(as.factor(df$element_type)))
+table(levels(as.factor(df$team)),levels(as.factor(df$team_navn)))
+
+#leser også inn spillere-poeng kamp
+#df_spillerdata = datagrabber("spillere_poeng_kamp")
+df_spillerdata = read.csv2("data/spillere_poeng_2017-04-18.csv",stringsAsFactors = FALSE)
+```
+### Lagstatus
+
+```{r,include=FALSE}
+#spilleres lag fra totallista
+summary(df_lag$total)
+kable(filter(df_lag,player_name=="Eivind Hageberg"))
+```
+
+```{r}
+#plotter poengtotal, med vline på min poengsum
+qplot(total,data=df_lag,facets=dato~.)+
+        geom_vline(xintercept = filter(df_lag,player_name=="Eivind Hageberg")$total,facets=dato~.)
+
+```
+
+Det har gått oppover, men fjerde runde ga et ørlite fall (etter Rosteds utvisning).
+
+### Spillertroppen
+
+```{r}
+kable(arrange(select(filter(df,team_now==1),id,navn,posisjon,team_navn,total_points,status,news,chance_of_playing_this_round,chance_of_playing_next_round,in_dreamteam),posisjon,desc(total_points)),caption="Nåværende 15 spillere")
+```
+
+Rosted har fått rødt kort.
+
+```{r, include=FALSE}
+df_spillerdata = left_join(df_spillerdata,select(df,id,team_now,team_past,navn),by=c("id_player"="id"))
+#utfordring: plotte mine poeng (som inkl. kaptein og benk) eller poeng totalt?
+#første omgang: poeng totalt
+qplot(round,total_points,data=df_spillerdata[df_spillerdata$id_player %in% filter(df,team_now==1)$id,],facets=~navn,geom="line")
+#poeng for de jeg har solgt
+qplot(round,total_points,data=df_spillerdata[df_spillerdata$id_player %in% filter(df,team_past==1)$id,],facets=~navn,geom="line")
+#første omgang: poeng totalt
+qplot(round,value,data=df_spillerdata[df_spillerdata$id_player %in% filter(df,team_now==1)$id,],facets=~navn,geom="line")
+qplot(round,value,data=df_spillerdata[df_spillerdata$id_player %in% filter(df,team_past==1)$id,],facets=~navn,geom="line")
+```
+
+Etter forrige ukes bytte, har verdien på laget mitt heldigvis gått i riktig retning igjen.
+
+### Lagforbedring
+
+### Modell 1: kan vi forutsi framtidige poeng med fortidens poeng?
+
+I likhet med tidligere kan vi ta en rask kikk på drømmelaget (som funnet ved lineær optimalisering). Det hadde bestått av følgende femten spillere:
+
+```{r}
+optimized_team = teamchooser(df) 
+#returnerer ei liste med tre df: lp-objektet, df som passes og laget - bruk [[1]]
+optimized_team[[1]]
+df = optimized_team[[2]]
+kable(select(optimized_team[[3]],id,navn,posisjon,team_navn,now_cost,selected_by_percent,total_points))
+```
+
+```{r}
+optimized_team = teamchooser(df,incremental=TRUE,max_team_cost=1001)
+#returnerer ei liste med tre df: lp-objektet, df som passes og laget - bruk [[1]]
+optimized_team[[1]]
+df = optimized_team[[2]]
+
+#beste lag og laget nå
+kable(arrange(select(filter(df,((team_now==1&solution_incremental==1)|(team_now==1&solution_incremental==0)|(team_now==0&solution_incremental==1))),id,navn,posisjon,team_navn,now_cost,selected_by_percent,total_points,solution_incremental,team_now),posisjon))
+
+```
+
+Det ene spillerbyttet som gir størst økning er FLo mot Kastrati. Å bytte Gashi mot Trondsen ser ut til å ha vært et godt bytte (foreløpig).
+
+```{r,include=FALSE}
+#i mange på¨en måte å hente ut laget mitt på lagrer jeg det her
+#bør ha file.exist her
+#df$team_4 = df$solution_incremental
+#df$team_now = df$solution_incremental
+#write.csv2(df,paste0("data/endra_lag_2017-04-21.csv"),row.names=F)
+```
+
+Denne gangen vil jeg imidlertid se nærmere på (en variant av) den underliggende antakelsen bak modellen over: at tidligere tildelte poeng er en god måte å forutsi framtidige poeng på. Dette er en variant, fordi den lineære optimeringsmodellen over ser på totalt kumulerte poeng, mens under ser jeg på framtidige nye poeng. 
+
+En grunn er at framtidig totalt kumulerte poeng = nye poeng + totalt kumulerte poeng, slik at det som blir analysert som avhengig variabel i praksis blir de nye poengene. En annen grunn (som gjelder hvis det er en substansiell forskjell her) er at jeg ser etter spillere som vil kunne skaffe laget mitt mange poeng i framtida - ikke spillere som har skaffet laget sitt mange poeng i fortida.
+
+```{r}
+#trekker ut poengene i en egen df og gjør noen beregninger for å gjøre lm mulig/lettere
+df_poeng = spread(select(df_spillerdata,id_player,round,total_points),round,total_points)
+names(df_poeng)[2:5]=paste0("runde_",names(df_poeng)[2:5])
+df_poeng$runde_1_3 = df_poeng$runde_1+df_poeng$runde_2+df_poeng$runde_3
+df_poeng$runde_1_2 = df_poeng$runde_1+df_poeng$runde_2
+df_poeng$runde_3_4 = df_poeng$runde_3+df_poeng$runde_4
+
+#modeller med eget term for poeng
+df_poeng$runde_1_poeng = 0
+df_poeng$runde_1_poeng[df_poeng$runde_1!=0] = 1
+df_poeng$runde_2_poeng = 0
+df_poeng$runde_2_poeng[df_poeng$runde_2!=0] = 1        
+df_poeng$runde_3_poeng = 0
+df_poeng$runde_3_poeng[df_poeng$runde_3!=0] = 1
+df_poeng$runde_4_poeng = 0
+df_poeng$runde_4_poeng[df_poeng$runde_4!=0] = 1
+df_poeng$runde_1_2_poeng = 0
+df_poeng$runde_1_2_poeng[df_poeng$runde_1_2!=0] = 1
+df_poeng$runde_3_4_poeng = 0
+df_poeng$runde_3_4_poeng[df_poeng$runde_3_4!=0] = 1
+df_poeng$runde_1_3_poeng = 0
+df_poeng$runde_1_3_poeng[df_poeng$runde_1_3!=0] = 1
+
+```
+
+```{r}
+#grafisk fordelingsanalyse
+qplot(as.factor(round),total_points,data=df_spillerdata,geom="boxplot")
+summary(df_poeng$runde_1_3)
+qplot(runde_1,data=df_poeng,binwidth=1)
+qplot(runde_2,data=df_poeng,binwidth=1)
+qplot(runde_3,data=df_poeng,binwidth=1)
+qplot(runde_4,data=df_poeng,binwidth=1)
+qplot(runde_1_2,data=df_poeng,binwidth=1)
+qplot(runde_3_4,data=df_poeng,binwidth=1)
+qplot(runde_1_3,data=df_poeng,binwidth=1)
+```
+Alle fordelingene er høyreskjeve - de fleste spillerne har null poeng eller deromkring, og få spillere har høyere verdier. Det gjelder også når vi summerer over runder - den første kvartilen (25 % av spillerne) har 0 poeng. I boksplot-sammenheng er alle verdier over fem poeng å betrakte som uteliggere.
+
+Som [Hyndman](https://stats.stackexchange.com/questions/1444/how-should-i-transform-non-negative-data-including-zeros) kommenterer i et spørsmål på CrossValidated er en vanlig tilnærming å logtransformere med log(x+1), mens den generelle tilnærminga med Box-Cox-transformasjon kanskje er å foretrekke. En annen variant er å legge inn et ledd for poeng/ikke-poeng (anbefalt av Whuber på [CrossValidated](https://stats.stackexchange.com/questions/6563/80-of-missing-data-in-a-single-variable)).
+
+```{r}
+#logtransformering
+#boxcox-transformering kan også være riktig/en mer generell tilnærming
+qplot(log(runde_1+1),data=df_poeng)
+qplot(log(runde_1_3+1),data=df_poeng)
+```
+
+
+```{r}
+#enkle diagram for sammenheng
+
+skala = c(min(select(df_poeng,-id_player),na.rm=T),max(select(df_poeng,-id_player),na.rm=T))
+qplot(runde_1,runde_2,data=df_poeng)+
+        scale_y_continuous(limits=skala)+
+        scale_x_continuous(limits=skala)+
+        ggtitle("Poeng i runde 2 som funksjon av poeng i runde 1")
+qplot(runde_2,runde_3,data=df_poeng)+
+        scale_y_continuous(limits=skala)+
+        scale_x_continuous(limits=skala)+
+        ggtitle("Poeng i runde 3 som funksjon av poeng i runde 2")
+qplot(runde_3,runde_4,data=df_poeng)+
+        scale_y_continuous(limits=skala)+
+        scale_x_continuous(limits=skala)+
+        ggtitle("Poeng i runde 4 som funksjon av poeng i runde 3")
+```
+
+Scatterplottene tyder på at det ikke er en sterk positiv lineær sammenheng, kanskje heller en kubisk sammenheng. Kombinert med at det er langt flere observasjoner med 0 og andre lave poengsum, er jeg skeptisk til om en lineær modell kan gi gode prediksjoner på framtidig poengsum. Estimerer derfor en rekke modeller under, og sammenlikner presisjon med MAE - mean average error - og goodness-of-fitt, R2.
+
+```{r}
+#dette kan gjøres bedre: kanskje lage en funksjon som kalles en eller flere ganger, augment-informasjon kan legges til en felles df, plots kan stables penere (hvis mulig i knitta github_document)
+
+#estimerer en lineær modell av poeng_t+1~poeng_t
+
+#r2~r1
+lmmodell_1 = lm(runde_2~runde_1,data=df_poeng)
+tidy(lmmodell_1)
+df_lmmodell_1 = augment(lmmodell_1)
+df_lmmodell_1$.mae = df_lmmodell_1$runde_2 - df_lmmodell_1$.fitted
+#sammenhengplot
+qplot(runde_1,runde_2,data=df_poeng)+
+        geom_abline(intercept = 0.9494420,slope=0.3540487)
+#diagnoseplots
+qplot(runde_2,.fitted,data=df_lmmodell_1)
+qplot(runde_2,.resid,data=df_lmmodell_1)
+df_modell = data.frame("modellnavn"="lmmodell_1","mean abs error"=mean(abs(df_lmmodell_1$.mae),na.rm=T),glance(lmmodell_1))
+
+#r3~r2
+lmmodell_2 = lm(runde_3~runde_2,data=df_poeng)
+tidy(lmmodell_2)
+df_lmmodell_2 = augment(lmmodell_2)
+df_lmmodell_2$.mae = df_lmmodell_2$runde_3 - df_lmmodell_2$.fitted
+qplot(runde_2,runde_3,data=df_poeng)+
+        geom_abline(intercept = tidy(lmmodell_2)[1,2],slope=tidy(lmmodell_2)[2,2])
+qplot(runde_3,.fitted,data=df_lmmodell_2)
+qplot(runde_3,.resid,data=df_lmmodell_2)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_2","mean abs error"=mean(abs(df_lmmodell_2$.mae),na.rm=T),glance(lmmodell_2)))
+
+#r4~r3
+lmmodell_3 = lm(runde_4~runde_3,data=df_poeng)
+tidy(lmmodell_3)
+df_lmmodell_3 = augment(lmmodell_3)
+df_lmmodell_3$.mae = df_lmmodell_3$runde_4 - df_lmmodell_3$.fitted
+qplot(runde_3,runde_4,data=df_poeng)+
+        geom_abline(intercept = tidy(lmmodell_3)[1,2],slope=tidy(lmmodell_3)[2,2])
+qplot(runde_4,.fitted,data=df_lmmodell_3)
+qplot(runde_4,.resid,data=df_lmmodell_3)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_3","mean abs error"=mean(abs(df_lmmodell_3$.mae),na.rm=T),glance(lmmodell_3)))
+
+#r4~r1_3
+lmmodell_4 = lm(runde_4~runde_1_3,data=df_poeng)
+tidy(lmmodell_4)
+summary(lmmodell_4)
+df_lmmodell_4 = augment(lmmodell_4)
+df_lmmodell_4$.mae = df_lmmodell_4$runde_4 - df_lmmodell_4$.fitted
+qplot(runde_4,.fitted,data=df_lmmodell_4)
+qplot(runde_4,.resid,data=df_lmmodell_4)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_4","mean abs error"=mean(abs(df_lmmodell_4$.mae),na.rm=T),glance(lmmodell_4)))
+
+#r3_4~r1_2
+lmmodell_5 = lm(runde_3_4~runde_1_2,data=df_poeng)
+tidy(lmmodell_5)
+summary(lmmodell_5)
+df_lmmodell_5 = augment(lmmodell_5)
+df_lmmodell_5$.mae = df_lmmodell_5$runde_3_4 - df_lmmodell_5$.fitted
+qplot(runde_1_2,runde_3_4,data=df_poeng)+
+        geom_abline(intercept = tidy(lmmodell_5)[1,2],slope=tidy(lmmodell_5)[2,2])
+qplot(runde_3_4,.fitted,data=df_lmmodell_5)
+qplot(runde_3_4,.resid,data=df_lmmodell_5)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_5","mean abs error"=mean(abs(df_lmmodell_5$.mae),na.rm=T),glance(lmmodell_5)))
+
+```
+
+```{r}
+#modeller med log
+#log(r4)~log(r1_3)
+lmmodell_6 = lm(log(runde_4+1)~log(runde_1_3+1),data=df_poeng)
+tidy(lmmodell_6)
+summary(lmmodell_6)
+df_lmmodell_6 = augment(lmmodell_6)
+df_lmmodell_6$.mae = df_lmmodell_6$log.runde_4...1. - df_lmmodell_6$.fitted
+#ville egentlig beregne gjennomsnittlig %-feil, men det lar seg vanskelig gjør emed så mange nuller som det er her - blir bare inf.
+qplot(log.runde_4...1.,.fitted,data=df_lmmodell_6)
+qplot(log.runde_4...1.,.resid,data=df_lmmodell_6)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_6","mean abs error"=mean(abs(df_lmmodell_6$.mae),na.rm=T),glance(lmmodell_6)))
+
+#interessant funksjon fra forcast-pakka
+#https://www.otexts.org/fpp/2/5
+accuracy(df_lmmodell_6$.fitted,df_lmmodell_6$log.runde_4...1.)
+
+```
+
+```{r}
+#modeller med term for poeng eller ikke
+#r4~r1_3+poeng
+lmmodell_7 = lm(runde_4~runde_1_3+runde_1_3_poeng,data=df_poeng)
+tidy(lmmodell_7)
+summary(lmmodell_7)
+df_lmmodell_7 = augment(lmmodell_7)
+df_lmmodell_7$.mae = df_lmmodell_7$runde_4 - df_lmmodell_7$.fitted
+#ville egentlig beregne gjennomsnittlig %-feil, men det lar seg vanskelig gjør emed så mange nuller som det er her - blir bare inf.
+qplot(runde_4,.fitted,data=df_lmmodell_7)
+qplot(runde_4,.resid,data=df_lmmodell_7)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_7","mean abs error"=mean(abs(df_lmmodell_7$.mae),na.rm=T),glance(lmmodell_7)))
+
+accuracy(df_lmmodell_7$.fitted,df_lmmodell_7$runde_4)
+
+#r2~r1
+lmmodell_8 = lm(runde_2~runde_1+runde_1_poeng,data=df_poeng)
+tidy(lmmodell_8)
+summary(lmmodell_8)
+df_lmmodell_8 = augment(lmmodell_8)
+df_lmmodell_8$.mae = df_lmmodell_8$runde_2 - df_lmmodell_8$.fitted
+#ville egentlig beregne gjennomsnittlig %-feil, men det lar seg vanskelig gjør emed så mange nuller som det er her - blir bare inf.
+qplot(runde_2,.fitted,data=df_lmmodell_8)
+qplot(runde_2,.resid,data=df_lmmodell_8)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_8","mean abs error"=mean(abs(df_lmmodell_8$.mae),na.rm=T),glance(lmmodell_8)))
+
+accuracy(df_lmmodell_8$.fitted,df_lmmodell_8$runde_2)
+
+#r3~r2
+lmmodell_9 = lm(runde_3~runde_2+runde_2_poeng,data=df_poeng)
+tidy(lmmodell_9)
+summary(lmmodell_9)
+df_lmmodell_9 = augment(lmmodell_9)
+df_lmmodell_9$.mae = df_lmmodell_9$runde_3 - df_lmmodell_9$.fitted
+#ville egentlig beregne gjennomsnittlig %-feil, men det lar seg vanskelig gjør emed så mange nuller som det er her - blir bare inf.
+qplot(runde_3,.fitted,data=df_lmmodell_9)
+qplot(runde_3,.resid,data=df_lmmodell_9)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_9","mean abs error"=mean(abs(df_lmmodell_9$.mae),na.rm=T),glance(lmmodell_9)))
+
+accuracy(df_lmmodell_9$.fitted,df_lmmodell_9$runde_3)
+
+#r4~r3
+lmmodell_10 = lm(runde_4~runde_3+runde_3_poeng,data=df_poeng)
+tidy(lmmodell_10)
+summary(lmmodell_10)
+df_lmmodell_10 = augment(lmmodell_10)
+df_lmmodell_10$.mae = df_lmmodell_10$runde_4 - df_lmmodell_10$.fitted
+#ville egentlig beregne gjennomsnittlig %-feil, men det lar seg vanskelig gjør emed så mange nuller som det er her - blir bare inf.
+qplot(runde_4,.fitted,data=df_lmmodell_10)
+qplot(runde_4,.resid,data=df_lmmodell_10)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_10","mean abs error"=mean(abs(df_lmmodell_10$.mae),na.rm=T),glance(lmmodell_10)))
+
+accuracy(df_lmmodell_10$.fitted,df_lmmodell_10$runde_4)
+
+#r3_4~r1_2
+lmmodell_11 = lm(runde_3_4~runde_1_2+runde_1_2_poeng,data=df_poeng)
+tidy(lmmodell_11)
+summary(lmmodell_11)
+df_lmmodell_11 = augment(lmmodell_11)
+df_lmmodell_11$.mae = df_lmmodell_11$runde_3_4 - df_lmmodell_11$.fitted
+#ville egentlig beregne gjennomsnittlig %-feil, men det lar seg vanskelig gjør emed så mange nuller som det er her - blir bare inf.
+qplot(runde_3_4,runde_1_2,data=df_poeng)+
+        geom_abline(intercept = (tidy(lmmodell_11)[1,2]+tidy(lmmodell_11)[3,2]),slope=tidy(lmmodell_11)[2,2])
+qplot(runde_3_4,.fitted,data=df_lmmodell_11)
+qplot(runde_3_4,.resid,data=df_lmmodell_11)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_11","mean abs error"=mean(abs(df_lmmodell_11$.mae),na.rm=T),glance(lmmodell_11)))
+
+accuracy(df_lmmodell_11$.fitted,df_lmmodell_11$runde_3_4)
+
+#log
+#r3_4~r1_2
+lmmodell_12 = lm(log(runde_3_4+1)~runde_1_2+runde_1_2_poeng,data=df_poeng)
+tidy(lmmodell_12)
+summary(lmmodell_12)
+df_lmmodell_12 = augment(lmmodell_12)
+df_lmmodell_12$.mae = df_lmmodell_12$log.runde_3_4...1. - df_lmmodell_12$.fitted
+#ville egentlig beregne gjennomsnittlig %-feil, men det lar seg vanskelig gjør emed så mange nuller som det er her - blir bare inf.
+qplot(log.runde_3_4...1.,.fitted,data=df_lmmodell_12)
+qplot(log.runde_3_4...1.,.resid,data=df_lmmodell_12)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_12_logDV","mean abs error"=mean(abs(df_lmmodell_12$.mae),na.rm=T),glance(lmmodell_12)))
+
+accuracy(df_lmmodell_11$.fitted,df_lmmodell_11$runde_3_4)
+
+```
+
+```{r}
+#modeller med term for poeng eller ikke + kubisk forhold
+#r4~r1_3+poeng
+lmmodell_13 = lm(runde_4~runde_1_3+I(runde_1_3^2)+runde_1_3_poeng,data=df_poeng)
+tidy(lmmodell_13)
+summary(lmmodell_13)
+df_lmmodell_13 = augment(lmmodell_13)
+df_lmmodell_13$.mae = df_lmmodell_13$runde_4 - df_lmmodell_13$.fitted
+#ville egentlig beregne gjennomsnittlig %-feil, men det lar seg vanskelig gjør emed så mange nuller som det er her - blir bare inf.
+qplot(runde_4,.fitted,data=df_lmmodell_13)
+qplot(runde_4,.resid,data=df_lmmodell_13)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_13","mean abs error"=mean(abs(df_lmmodell_13$.mae),na.rm=T),glance(lmmodell_13)))
+accuracy(df_lmmodell_13$.fitted,df_lmmodell_7$runde_4)
+
+#log
+#r3_4~r1_2
+lmmodell_14 = lm(log(runde_3_4+1)~runde_1_2+I(runde_1_2^2)+runde_1_2_poeng,data=df_poeng)
+tidy(lmmodell_14)
+summary(lmmodell_14)
+df_lmmodell_14 = augment(lmmodell_14)
+df_lmmodell_14$.mae = df_lmmodell_14$log.runde_3_4...1. - df_lmmodell_14$.fitted
+#ville egentlig beregne gjennomsnittlig %-feil, men det lar seg vanskelig gjør emed så mange nuller som det er her - blir bare inf.
+qplot(log.runde_3_4...1.,.fitted,data=df_lmmodell_14)
+qplot(log.runde_3_4...1.,.resid,data=df_lmmodell_14)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_14_logDV","mean abs error"=mean(abs(df_lmmodell_14$.mae),na.rm=T),glance(lmmodell_14)))
+
+accuracy(df_lmmodell_14$.fitted,df_lmmodell_14$runde_3_4)
+
+```
+
+```{r}
+kable(select(df_modell,modellnavn,mean.abs.error,r.squared))
+```
+
+Generelt ser alle modellene ut til å treffe greit på de lavere poengsummene. De har også relativt lave gjennomsnittlige avvik - fra 1.3 til 1.5 poeng unna faktisk verdi burde ikke være helt over styr. Modellene som ser på  på poengene utdelt i runde 3 og 4 som en funksjon av poengene i runde 1 og 2 gjør det bedre på R2 - 28 % - men har det høyeste gjennomsnittlige avviket mellom predikert og faktisk verdi - 2.5.
+
+Modellene som har kumulative poeng for de tre første rundene, klarer seg litt bedre vurdert ut ifra r2 og gjennomsnittlig absolutt feil
+
+Modellen med logaritmer har en klart høyere R2. Mean error lar seg ikke  sammenlikne direkte, ettersom den er på forskjellige skalaer (men log-skala, så med litt tolkning av logaritmen bør det gå?)
+
+Det største problemet for alle modellene ser vi i diagnoseplottene av predikert verdi mot faktisk verdi og residual mot faktisk verdi: Alle modellene bommer veldig på de høyere poengsummene. Det er heller ingen ingen sterk lineær sammenheng mellom høye poeng i en runde og høye poeng i neste. Sammenhengen er der, og den er positiv, men den er svak. Det er egentlig logisk - når langt de fleste spillerne får lave poengsummer, er algoritmen mest presis i å tippe at spillere også i framtida får lave poengsummer. 
+
+Det betyr to ting: Modellen klarer ikke å finne spillerne som sanker flest poeng (noe som jo strengt tatt er formålet her). 2: forutsetningene for lineær regresjon / for at lineær regresjon skal være effektivt er ikke oppfylt. 
+
+Hva betyr dette for den lineære optimeringsstrategien min? Det kan bety at i de første fire rundene har tidligere poeng utdelt vært en dårlig prediktor for framtidige poeng utdelt, særlig for de som får mange poeng. Siden også pris, posisjon og lagtilhørighet spiller en rolle for utvelgelse er det ikke opplagt at jeg bør kaste den lineære modellen ut vinduet - kanskje begrensningene bidrar til at optimeringsmodellen ikke plukker de fra absolutt øverste hylle, men heller noen i midtsjiktet - som kanskje også har en sterkere sammenheng mellom poeng over tid?
+
+### Modell 2: fortidige poeng sammen med andre indikatorer?
+En annen mulighet vil være å beholde deler av den opprinnelige modellen for å bedre predikere utviklinga til spillerne. 
+
+Pris og antall som hadde valgt vedkommende inngikk der, sammen med en vurdering av lagstyrke og tidligere scorte poeng.
+
+```{r}
+#databehandling
+
+#mens jeg i første forsøk kjørte samme modell på flere sett med data, for dermed å få et (lite) utvalg MAE-scores, prøver jeg her med en dirty pool-taktikk.
+df_poeng_pluss = select(df_spillerdata,round,total_points,value,transfers_balance,selected,id_player)
+df_poeng_pluss$points_nextround = 0
+for(i in 1:nlevels(as.factor(df_poeng_pluss$id_player))){
+        for(j in 1:nlevels(as.factor(df_poeng_pluss$round[df_poeng_pluss$id_player==i]))){
+                if(j<nlevels(as.factor(df_poeng_pluss$round[df_poeng_pluss$id_player==i]))){
+                        df_poeng_pluss$points_nextround[df_poeng_pluss$id_player==i&df_poeng_pluss$round==j] = df_poeng_pluss$total_points[df_poeng_pluss$id_player==i&df_poeng_pluss$round==(j+1)]
+                }
+                if(j==nlevels(as.factor(df_poeng_pluss$round[df_poeng_pluss$id_player==i]))){
+                        df_poeng_pluss$points_nextround[df_poeng_pluss$id_player==i&df_poeng_pluss$round==j] = NA
+                }
+        }
+}
+
+df_poeng_pluss$rundepoeng = 0
+df_poeng_pluss$rundepoeng[df_poeng_pluss$total_points!=0] = 1
+df_poeng_pluss = left_join(df_poeng_pluss,select(df,id,posisjon,team_navn),by=c("id_player"="id"))
+
+#leser inn value_form, value_season, form, ep_this, ep_next fra ett datasett før hver runde
+temp_1 = read.csv2("data/spillerdata_2017-04-01.csv",stringsAsFactors = FALSE,dec=".")
+temp_2 = read.csv2("data/spillerdata_2017-04-08.csv",stringsAsFactors = FALSE,dec=".")
+temp_3 = read.csv2("data/spillerdata_2017-04-11.csv",stringsAsFactors = FALSE,dec=".")
+temp_3$selected_by_percent = parse_number(temp_3$selected_by_percent)
+temp_4 = read.csv2("data/spillerdata_2017-04-20.csv",stringsAsFactors = FALSE,dec=".")
+temp_4$selected_by_percent = parse_number(temp_4$selected_by_percent)
+temp = bind_rows("0"=temp_1,"2"=temp_2,"3"=temp_3,"4"=temp_4,.id="round")
+temp = select(temp,id,round,value_form,value_season,form,ep_this,ep_next)
+temp$round = parse_number(temp$round)
+df_poeng_pluss = left_join(df_poeng_pluss,temp,by=c("id_player"="id","round"="round"))
+```
+
+```{r}
+#EDA
+qplot(total_points,data=df_poeng_pluss)
+qplot(log(total_points+1),data=df_poeng_pluss)
+qplot(total_points,points_nextround,data=df_poeng_pluss)
+qplot(rundepoeng,data=df_poeng_pluss)
+qplot(value,data=df_poeng_pluss,binwidth=5)
+qplot(transfers_balance,data=df_poeng_pluss)
+qplot(selected,data=df_poeng_pluss)
+qplot(value_form,data=df_poeng_pluss)
+qplot(value_season,data=df_poeng_pluss)
+qplot(form,data=df_poeng_pluss)
+qplot(ep_this,data=df_poeng_pluss)
+qplot(ep_this,total_points,data=df_poeng_pluss)
+qplot(ep_this,points_nextround,data=df_poeng_pluss)
+qplot(ep_next,total_points,data=df_poeng_pluss)
+qplot(ep_next,points_nextround,data=df_poeng_pluss)
+```
+
+
+```{r}
+#points_next~total_points
+lmmodell_20 = lm(points_nextround~total_points+I(total_points^2)+rundepoeng,data=df_poeng_pluss)
+tidy(lmmodell_20)
+summary(lmmodell_20)
+df_lmmodell_20 = augment(lmmodell_20)
+df_lmmodell_20$.mae = df_lmmodell_20$points_nextround - df_lmmodell_20$.fitted
+#ville egentlig beregne gjennomsnittlig %-feil, men det lar seg vanskelig gjør emed så mange nuller som det er her - blir bare inf.
+qplot(points_nextround,.fitted,data=df_lmmodell_20)
+qplot(points_nextround,.resid,data=df_lmmodell_20)
+accuracy(df_lmmodell_20$.fitted,df_lmmodell_20$points_nextround)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_20","mean abs error"=mean(abs(df_lmmodell_20$.mae),na.rm=T),glance(lmmodell_20)))
+
+#points_next~total_points+value+selected+posisjon+team_navn
+lmmodell_21 = lm(points_nextround~total_points+I(total_points^2)+rundepoeng+value+selected+as.factor(posisjon)+as.factor(team_navn),data=df_poeng_pluss)
+tidy(lmmodell_21)
+summary(lmmodell_21)
+df_lmmodell_21 = augment(lmmodell_21)
+qplot(points_nextround,.fitted,data=df_lmmodell_21)
+qplot(points_nextround,.resid,data=df_lmmodell_21)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_21","mean abs error"=accuracy(df_lmmodell_21$.fitted,df_lmmodell_21$points_nextround)["Test set","MAE"],glance(lmmodell_21)))
+
+
+```
+
+
+### Modell 3: kjøkkenvasken
+Datasettet om spillerne har en rekke variabler som jeg ikke har utforska, deriblant indikatorer som kan være form og estimerte poeng i neste kamp.
+
+```{r}
+#points_next~ep_next
+lmmodell_31 = lm(points_nextround~ep_next,data=df_poeng_pluss)
+tidy(lmmodell_31)
+summary(lmmodell_31)
+df_lmmodell_31 = augment(lmmodell_31)
+qplot(points_nextround,.fitted,data=df_lmmodell_31)
+qplot(points_nextround,.resid,data=df_lmmodell_31)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_31","mean abs error"=accuracy(df_lmmodell_31$.fitted,df_lmmodell_31$points_nextround)["Test set","MAE"],glance(lmmodell_31)))
+
+#points_next
+lmmodell_32 = lm(points_nextround~ep_next+rundepoeng,data=df_poeng_pluss)
+tidy(lmmodell_32)
+summary(lmmodell_32)
+df_lmmodell_31 = augment(lmmodell_31)
+qplot(points_nextround,.fitted,data=df_lmmodell_31)
+qplot(points_nextround,.resid,data=df_lmmodell_31)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_31","mean abs error"=accuracy(df_lmmodell_31$.fitted,df_lmmodell_31$points_nextround)["Test set","MAE"],glance(lmmodell_31)))
+
+#points_next~total_points+value+selected+posisjon+team_navn+ep_next+ep_this
+lmmodell_30 = lm(points_nextround~total_points+I(total_points^2)+rundepoeng+value+selected+as.factor(posisjon)+ep_next+ep_this,data=df_poeng_pluss)
+tidy(lmmodell_30)
+summary(lmmodell_30)
+df_lmmodell_30 = augment(lmmodell_30)
+qplot(points_nextround,.fitted,data=df_lmmodell_30)
+qplot(points_nextround,.resid,data=df_lmmodell_30)
+df_modell = bind_rows(df_modell,data.frame("modellnavn"="lmmodell_30","mean abs error"=accuracy(df_lmmodell_30$.fitted,df_lmmodell_30$points_nextround)["Test set","MAE"],glance(lmmodell_30)))
+```
+
